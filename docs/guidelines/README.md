@@ -22,7 +22,6 @@ A guideline document must follow this structure:
 
 1. Brief description of what the document covers.
 2. Step-by-step instructions with code examples.
-3. A `## Rules` section listing non-negotiable constraints, if any.
 
 ## Rules
 
@@ -38,4 +37,5 @@ A guideline document must follow this structure:
 - [error-handling.md](error-handling.md) — Domain exceptions, HTTP mapping, fallbacks, retry bounds.
 - [event-design.md](event-design.md) — Event envelope, naming, versioning, idempotent consumers.
 - [writing-logs.md](writing-logs.md) — Log levels, formatting, security events, sensitive data.
+- [writing-models.md](writing-models.md) — UUID PKs, timestamps, field comments, indexes, relationships.
 - [writing-tests.md](writing-tests.md) — Test layers, dependency injection, fixtures, fakes.

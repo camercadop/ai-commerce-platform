@@ -18,10 +18,12 @@ messages or internal state.
 ```python
 # app/catalog/exceptions.py
 
+
 class CatalogError(Exception):
     """Base exception for the catalog domain."""
 
     code: str
+
 
 class ProductNotFound(CatalogError):
     """Raised when a product does not exist."""
@@ -31,6 +33,7 @@ class ProductNotFound(CatalogError):
     def __init__(self, product_id: UUID) -> None:
         self.product_id = product_id
         super().__init__(f"Product not found: {product_id}")
+
 
 class ProductAlreadyExists(CatalogError):
     """Raised when creating a product with a name that is already taken."""
@@ -52,6 +55,7 @@ that is the route layer's responsibility.
 
 ```python
 # app/catalog/service.py
+
 
 class ProductService:
     """Manages product lifecycle operations."""
@@ -80,18 +84,23 @@ route functions.
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Register catalog domain exception handlers."""
 
     @app.exception_handler(ProductNotFound)
-    def handle_product_not_found(request: Request, exc: ProductNotFound) -> JSONResponse:
+    def handle_product_not_found(
+        request: Request, exc: ProductNotFound
+    ) -> JSONResponse:
         return JSONResponse(
             status_code=404,
             content={"error": {"code": exc.code, "message": str(exc)}},
         )
 
     @app.exception_handler(ProductAlreadyExists)
-    def handle_product_already_exists(request: Request, exc: ProductAlreadyExists) -> JSONResponse:
+    def handle_product_already_exists(
+        request: Request, exc: ProductAlreadyExists
+    ) -> JSONResponse:
         return JSONResponse(
             status_code=409,
             content={"error": {"code": exc.code, "message": str(exc)}},
@@ -142,6 +151,7 @@ def get_price(product_id: UUID) -> Decimal:
     except PricingUnavailable:
         return Decimal("0.00")
 
+
 # correct — fallback is explicit and visible
 def get_price(product_id: UUID) -> Decimal | None:
     """Return the current price, or None if the pricing service is unavailable.
@@ -177,7 +187,7 @@ for attempt in range(1, MAX_ATTEMPTS + 1):
     except TransientServiceError:
         if attempt == MAX_ATTEMPTS:
             raise
-        time.sleep(2 ** attempt)
+        time.sleep(2**attempt)
 ```
 
 Document the retry bounds in the method's docstring:
@@ -204,15 +214,3 @@ except SQLAlchemyError as exc:
     raise ProductRepositoryError("Failed to fetch product") from exc
 ```
 
----
-
-## Rules
-
-- Every custom exception must declare a `code` class attribute — a screaming snake case string that uniquely identifies the failure (e.g. `PRODUCT_NOT_FOUND`).
-- Domain exceptions must be declared in `exceptions.py` within the domain they belong to.
-- Services must raise domain exceptions — never `HTTPException`.
-- Domain exceptions must be mapped to HTTP responses in a registered exception handler, not inside route functions.
-- Every `except` block must re-raise or surface the failure explicitly — swallowing exceptions is not permitted.
-- Fallback behavior must be visible to the caller through the return type or a distinct exception — silent fallbacks are not permitted.
-- Retry logic must declare its maximum attempt count and the conditions under which it retries.
-- Always use `raise ... from exc` when wrapping a lower-level exception in a domain exception.

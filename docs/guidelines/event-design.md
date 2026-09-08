@@ -89,13 +89,3 @@ def handle_product_created(envelope: EventEnvelope) -> None:
     ...
 ```
 
----
-
-## Rules
-
-- Every event must have both an AsyncAPI contract and a Pydantic model, created in the same change.
-- Every event must use the platform envelope from `shared/events/`.
-- Event names must be past-tense, PascalCase domain facts.
-- Breaking payload changes require a new event version. The old version must remain available until all consumers migrate.
-- Every consumer must be idempotent — processing the same event twice must produce the same result.
-- A domain must never publish events on behalf of another domain.

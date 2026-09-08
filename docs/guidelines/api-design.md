@@ -18,6 +18,7 @@ class CreateProductRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     price: Decimal = Field(gt=0)
 
+
 class ProductResponse(BaseModel):
     id: UUID
     name: str
@@ -86,8 +87,7 @@ at the framework level and prevents internal fields from leaking into responses.
 
 ```python
 @router.post("/", response_model=ProductResponse, status_code=201)
-def create_product(body: CreateProductRequest) -> ProductResponse:
-    ...
+def create_product(body: CreateProductRequest) -> ProductResponse: ...
 ```
 
 ## 7. Keep route handlers thin
@@ -114,12 +114,12 @@ def get_db() -> Generator[Session, None, None]:
     with SessionLocal() as session:
         yield session
 
+
 @router.post("/", response_model=ProductResponse, status_code=201)
 def create_product(
     body: CreateProductRequest,
     db: Session = Depends(get_db),
-) -> ProductResponse:
-    ...
+) -> ProductResponse: ...
 ```
 
 ## 9. Use explicit HTTP status codes
@@ -135,16 +135,3 @@ def create_product(
 | Forbidden | `403` |
 | Conflict / duplicate | `409` |
 
----
-
-## Rules
-
-- Every endpoint must have a published contract (request + response schema) before implementation.
-- All responses must use the platform envelope from `shared/api/`.
-- All routes must be prefixed with `/api/v1/`. Increment the version only on breaking changes.
-- All validation and sanitization must live in Pydantic schemas — never in route handlers.
-- All collection endpoints must use cursor-based pagination and signal bounded results.
-- Every route decorator must declare `response_model` explicitly.
-- Route handlers must only parse the request, call the service, and return the response — no business logic.
-- The database session must always be injected via `Depends(get_db)` — never instantiated directly.
-- No internal model, database schema, or SQLAlchemy model may be exposed directly in a response.

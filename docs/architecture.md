@@ -3,6 +3,7 @@
 Implementation-level structural decisions for the AI Commerce Platform.
 
 This document covers folder layout, module conventions, and shared layer boundaries.
+
 Foundational architectural principles live in `docs/adr/`.
 Developer workflow lives in `docs/development.md`.
 
@@ -14,32 +15,16 @@ Developer workflow lives in `docs/development.md`.
 ai-commerce-platform/
 ├── app/
 │   ├── catalog/
-│   │   ├── migrations/
-│   │   └── tests/
 │   ├── commerce/
-│   │   ├── migrations/
-│   │   └── tests/
 │   ├── inventory/
-│   │   ├── migrations/
-│   │   └── tests/
 │   ├── payment/
-│   │   ├── migrations/
-│   │   └── tests/
 │   ├── identity/
-│   │   ├── migrations/
-│   │   └── tests/
 │   ├── ai_agent/
-│   │   └── tests/
 │   ├── search/
-│   │   └── tests/
 │   ├── media/
-│   │   └── tests/
 │   ├── notification/
-│   │   └── tests/
 │   ├── shopify/
-│   │   └── tests/
-│   ├── audit/
-│   │   └── tests/
+│   ├── audit/          # Each domain follows the internal structure described in Module Layout
 │   └── shared/
 │       ├── api/
 │       ├── config/
@@ -76,7 +61,7 @@ Every domain module under `app/` follows this internal structure:
 └── events.py       # Kafka producers and consumers for this domain
 ```
 
-Not every file is required for every domain. A domain without Kafka interaction omits `events.py`. A domain without a database omits `models.py` and `repository.py`.
+Not every file is required for every domain.
 
 ---
 

@@ -65,11 +65,3 @@ logger.info("Payment initiated: %s", payment_id)
 logger.info("Payment initiated with card: %s", card_number)
 ```
 
----
-
-## Rules
-
-- Every module that emits log output must declare a module-level logger using `logging.getLogger(__name__)`.
-- Always use `%s`-style formatting — never f-strings in log calls.
-- Always log security enforcement decisions: failed login, account locked, IP blocked, permission denied.
-- Never log passwords, tokens, secrets, full request bodies, or sensitive personal data.

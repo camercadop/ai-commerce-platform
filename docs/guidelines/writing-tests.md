@@ -93,14 +93,3 @@ def test_product_is_saved_in_db() -> None:
     assert db.query(Product).count() == 1
 ```
 
----
-
-## Rules
-
-- Do not add or modify tests unless explicitly requested.
-- All public functions and methods must have tests.
-- Every endpoint must have at least one smoke test.
-- Pure logic must be tested without DB access.
-- Test utilities live inside `app/<domain>/tests/` — never imported by production code.
-- Run tests with `uv run pytest`.
-- Do not run mypy or ruff on files inside `tests/` directories.
