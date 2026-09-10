@@ -208,9 +208,6 @@ tmp/
 # Cache files
 *.cache
 
-# Session files
-session*
-
 # Backup files
 *~
 
