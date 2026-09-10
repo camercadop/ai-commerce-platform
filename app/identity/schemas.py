@@ -124,4 +124,4 @@ class UpsertPreferencesRequest(BaseModel):
     if it does. Keys not present in the request are left unchanged.
     """
 
-    preferences: dict[str, str] = Field(min_length=1)
+    preferences: dict[str, str] = Field(min_length=1, max_length=50)

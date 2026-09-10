@@ -33,3 +33,18 @@ class AddressNotFound(ResourceNotFound):
 
     code = "ADDRESS_NOT_FOUND"
     resource_name = "Address"
+
+
+class InvalidPreferenceKey(Exception):
+    """Raised when a preference key is not in the allowed list.
+
+    The disallowed_keys attribute holds the set of keys that triggered the error.
+    """
+
+    code = "INVALID_PREFERENCE_KEY"
+
+    def __init__(self, disallowed_keys: set[str]) -> None:
+        self.disallowed_keys = disallowed_keys
+        super().__init__(
+            f"Invalid preference keys: {', '.join(sorted(disallowed_keys))}"
+        )

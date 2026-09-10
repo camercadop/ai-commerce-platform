@@ -6,9 +6,14 @@ from app.shared.api.validators import sanitize_strings
 
 class _Schema(BaseModel):
     name: str
-    value: object = None
 
     _strip = sanitize_strings("name")
+
+
+class _SchemaWithNonString(BaseModel):
+    value: object
+
+    _strip = sanitize_strings("value")
 
 
 def test_sanitizes_strings(subtests: pytest.Subtests) -> None:
@@ -23,5 +28,12 @@ def test_sanitizes_strings(subtests: pytest.Subtests) -> None:
             assert _Schema(name=value).name == expected
 
 
-def test_non_string_value_is_passed_through() -> None:
-    assert _Schema(name="x", value=42).value == 42
+def test_non_string_value_is_passed_through(subtests: pytest.Subtests) -> None:
+    cases = [
+        ("integer", 42),
+        ("none", None),
+        ("list", [1, 2, 3]),
+    ]
+    for description, value in cases:
+        with subtests.test(description):
+            assert _SchemaWithNonString(value=value).value == value

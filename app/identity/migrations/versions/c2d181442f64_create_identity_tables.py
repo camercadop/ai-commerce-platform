@@ -1,8 +1,8 @@
 """create_identity_tables
 
 Revision ID: c2d181442f64
-Revises: 
-Create Date: 2026-09-09 18:34:36.759377
+Revises:
+Create Date: 2026-09-10 11:37:22.399188
 
 """
 from typing import Sequence, Union
@@ -48,7 +48,8 @@ def upgrade() -> None:
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['customer_id'], ['identity_customers.id'], name='fk_identity_customer_addresses_customer_id'),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('customer_id', 'label', name='uq_identity_customer_addresses_customer_id_label')
     )
     op.create_table('identity_customer_preferences',
     sa.Column('id', sa.UUID(), nullable=False),

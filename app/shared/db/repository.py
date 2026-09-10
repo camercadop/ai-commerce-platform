@@ -1,12 +1,11 @@
 import uuid
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.shared.db.base import BaseModel, SoftDeleteMixin
-
-type T = BaseModel
 
 
 class BaseRepository[T: BaseModel]:
@@ -37,6 +36,39 @@ class BaseRepository[T: BaseModel]:
         if issubclass(self.model_class, SoftDeleteMixin):
             stmt = stmt.where(self.model_class.deleted_at.is_(None))
         return self.session.execute(stmt).scalar_one_or_none()
+
+    def list_page(
+        self,
+        *filters: Any,
+        limit: int,
+        cursor: tuple[datetime, uuid.UUID] | None = None,
+    ) -> list[T]:
+        """Return a keyset-paginated list of records matching the given filters.
+
+        Results are ordered by (created_at, id) ascending. Soft-deleted records
+        are excluded automatically when the model inherits SoftDeleteMixin.
+
+        Args:
+            *filters: SQLAlchemy column expressions to filter by.
+            limit: Maximum number of records to return.
+            cursor: Exclusive lower bound as (created_at, id) for keyset pagination.
+        """
+        model = self.model_class
+        stmt = (
+            select(model)
+            .where(*filters)
+            .order_by(model.created_at, model.id)  # type: ignore[attr-defined]
+            .limit(limit)
+        )
+        if issubclass(model, SoftDeleteMixin):
+            stmt = stmt.where(model.deleted_at.is_(None))
+        if cursor is not None:
+            cursor_at, cursor_id = cursor
+            stmt = stmt.where(
+                (model.created_at > cursor_at)  # type: ignore[attr-defined]
+                | ((model.created_at == cursor_at) & (model.id > cursor_id))  # type: ignore[attr-defined]
+            )
+        return list(self.session.execute(stmt).scalars().all())
 
     def create(self, **kwargs: Any) -> T:
         """Create and persist a new record with the given field values.

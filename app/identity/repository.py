@@ -1,6 +1,7 @@
 import uuid
+from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.identity.models import Address, Customer
 from app.shared.db import BaseRepository
@@ -40,17 +41,50 @@ class AddressRepository(BaseRepository[Address]):
 
     model_class = Address
 
-    def list_by_customer(self, customer_id: uuid.UUID) -> list[Address]:
-        """Return all active addresses belonging to the given customer.
+    def list_by_customer(
+        self,
+        customer_id: uuid.UUID,
+        limit: int,
+        cursor: tuple[datetime, uuid.UUID] | None = None,
+    ) -> list[Address]:
+        """Return a page of active addresses belonging to the given customer.
 
-        Soft-deleted addresses are excluded from the result.
+        Args:
+            customer_id: The UUID of the owning customer.
+            limit: Maximum number of records to return.
+            cursor: Exclusive lower bound as (created_at, id) for keyset pagination.
+        """
+        return self.list_page(
+            Address.customer_id == customer_id, limit=limit, cursor=cursor
+        )
+
+    def get_by_customer_and_label(
+        self, customer_id: uuid.UUID, label: str
+    ) -> Address | None:
+        """Return the active address matching the given customer and label, or None.
+
+        Args:
+            customer_id: The UUID of the owning customer.
+            label: The address label (e.g. Home, Work).
+        """
+        stmt = (
+            select(Address)
+            .where(Address.customer_id == customer_id)
+            .where(Address.label == label)
+            .where(Address.deleted_at.is_(None))
+        )
+        return self.session.execute(stmt).scalar_one_or_none()
+
+    def clear_default(self, customer_id: uuid.UUID) -> None:
+        """Unset is_default on all active addresses for the given customer.
 
         Args:
             customer_id: The UUID of the owning customer.
         """
         stmt = (
-            select(Address)
+            update(Address)
             .where(Address.customer_id == customer_id)
             .where(Address.deleted_at.is_(None))
+            .values(is_default=False)
         )
-        return list(self.session.execute(stmt).scalars().all())
+        self.session.execute(stmt)

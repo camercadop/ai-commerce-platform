@@ -15,7 +15,8 @@ concepts (products, orders, customers), it belongs in a domain module instead.
 | `db/` | SQLAlchemy engine, session factory, declarative base, generic repository |
 | `events/` | Event envelope model, abstract message broker port (ADR-004) |
 | `exceptions.py` | Shared base exception classes (`ResourceNotFound`, `ResourceAlreadyExists`) |
-| `observability/` | OpenTelemetry tracing setup, structured logging (ADR-005) |
+| `audit_log/` | Abstract audit port, `AuditRecord` schema, `record_audit()` helper, `NoOpAuditRepository` |
+| `observability/` | OpenTelemetry tracing setup, structured logging, `current_trace_id()` (ADR-005) |
 | `storage/` | Abstract object storage port (ADR-004) |
 
 ## Usage
@@ -51,6 +52,32 @@ router = CRUDRouter(
 ```
 
 Add custom routes directly on the returned router for non-standard operations.
+
+### Pagination
+
+Use `paginate()` with `decode_cursor()` to implement keyset pagination on any list endpoint:
+
+```python
+from app.shared.api import decode_cursor, paginate
+
+
+@router.get("/products", response_model=PaginatedResponse[ProductResponse])
+def list_products(
+    db: DbDep,
+    cursor: str | None = None,
+) -> PaginatedResponse[ProductResponse]:
+    decoded = decode_cursor(cursor) if cursor else None
+    rows = service.list(limit=PAGE_SIZE + 1, cursor=decoded)
+    return paginate(
+        rows=rows,
+        page_size=PAGE_SIZE,
+        to_response=lambda p: ProductResponse.model_validate(p, from_attributes=True),
+        get_cursor_fields=lambda p: (p.created_at, p.id),
+    )
+```
+
+`paginate()` slices the `limit+1` rows, detects `has_more`, and encodes the next cursor.
+The repository must return `limit + 1` rows so `paginate()` can detect whether more exist.
 
 ### String sanitization
 
@@ -153,6 +180,7 @@ Publish events through the domain's `events.py` using the `EventEnvelope`:
 
 ```python
 from app.shared.events import EventEnvelope, MessageBroker
+from app.shared.observability import current_trace_id
 
 broker.publish(
     "catalog.product.created",
@@ -183,6 +211,15 @@ configure_tracing(
 )
 ```
 
+Use `current_trace_id()` to read the active OTel trace ID as a hex string anywhere
+a trace context needs to be propagated (e.g. event envelopes, audit records):
+
+```python
+from app.shared.observability import current_trace_id
+
+trace_id = current_trace_id()  # 32-char hex string, or "" if no active span
+```
+
 ### Auth
 
 Build the dependency at startup and inject it into protected routes using `Annotated`:
@@ -199,6 +236,43 @@ CurrentUser = Annotated[TokenClaims, Depends(get_current_user)]
 
 @router.get("/orders")
 def list_orders(claims: CurrentUser) -> list[OrderResponse]: ...
+```
+
+### Audit log
+
+Depend on `AuditPort` and call `record_audit()` — never import from `app/sys_audit/` directly:
+
+```python
+from app.shared.audit_log import AuditPort, FieldChange, record_audit
+
+
+class ProductService:
+    def __init__(self, session: Session, audit: AuditPort) -> None:
+        self._audit = audit
+
+    def update(self, product_id: uuid.UUID, data: dict[str, Any]) -> Product:
+        product = self.repo.get_by_id(product_id)
+        before = {k: getattr(product, k) for k in data}
+        updated = self.repo.update(product, data)
+        record_audit(
+            self._audit,
+            actor_id=actor_id,
+            operation="update",
+            action="catalog.product_updated",
+            aggregate_type="product",
+            aggregate_id=product_id,
+            domain="catalog",
+            changes={k: FieldChange(before=before[k], after=data[k]) for k in data},
+        )
+        return updated
+```
+
+Use `NoOpAuditRepository` in tests and environments without MongoDB:
+
+```python
+from app.shared.audit_log import NoOpAuditRepository
+
+service = ProductService(session, audit=NoOpAuditRepository())
 ```
 
 ### Storage
@@ -220,6 +294,7 @@ class MediaService:
 ## Dependencies
 
 - `PostgreSQL` — transactional data storage via SQLAlchemy
+- `MongoDB` — audit record store via `app/sys_audit/MongoAuditRepository`
 - `OpenTelemetry Collector` — receives traces via OTLP/gRPC when `otel_enabled=True`
 
 ## Configuration
@@ -233,3 +308,8 @@ class MediaService:
 | `OTEL_SERVICE_NAME` | Service name reported in traces | required |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP collector gRPC endpoint | `http://localhost:4317` |
 | `OTEL_ENABLED` | Enable OTLP trace export | `True` |
+| `MONGO_USERNAME` | MongoDB username | required |
+| `MONGO_PASSWORD` | MongoDB password | required |
+| `MONGO_HOST` | MongoDB host | required |
+| `MONGO_PORT` | MongoDB port | required |
+| `MONGO_DATABASE` | Database name for audit records | required |

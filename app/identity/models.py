@@ -65,6 +65,14 @@ class Address(SoftDeleteMixin, TimestampMixin, BaseModel):
 
     __tablename__ = "identity_customer_addresses"
 
+    __table_args__ = (
+        UniqueConstraint(
+            "customer_id",
+            "label",
+            name="uq_identity_customer_addresses_customer_id_label",
+        ),
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,

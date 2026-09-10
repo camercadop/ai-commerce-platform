@@ -3,6 +3,7 @@ import uuid
 
 from app.identity.models import Customer
 from app.shared.events import EventEnvelope, MessageBroker
+from app.shared.observability import current_trace_id
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ def publish_customer_registered(broker: MessageBroker, customer: Customer) -> No
         producer="identity",
         aggregate_type="customer",
         aggregate_id=str(customer.id),
-        trace_id="",
+        trace_id=current_trace_id(),
         data={
             "customer_id": str(customer.id),
             "identity_provider_id": customer.identity_provider_id,

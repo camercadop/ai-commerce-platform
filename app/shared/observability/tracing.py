@@ -49,3 +49,18 @@ def configure_tracing(
     LoggingInstrumentor().instrument(set_logging_format=False)
 
     return provider
+
+
+def current_trace_id() -> str:
+    """Return the active OpenTelemetry trace ID as a hex string.
+
+    Returns an empty string if there is no active span or the span context
+    is invalid. Safe to call from any context, including outside a trace.
+
+    Returns:
+        A 32-character lowercase hex string, or empty string if no active trace.
+    """
+    ctx = trace.get_current_span().get_span_context()
+    if ctx.is_valid:
+        return format(ctx.trace_id, "032x")
+    return ""

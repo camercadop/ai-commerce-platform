@@ -20,7 +20,8 @@ provides platform primitives with no business logic.
 
 ```
 app/
-├── shared/     # Platform infrastructure (auth, db, events, observability, storage)
+├── shared/     # Platform infrastructure (auth, db, events, observability, storage, audit_log)
+├── sys_audit/  # Audit log implementation
 └── identity/   # Customer profiles and addresses
 ```
 
@@ -31,6 +32,7 @@ architectural decisions.
 
 - **Runtime**: Python 3.14, FastAPI, Pydantic, SQLAlchemy
 - **Database**: PostgreSQL (via Alembic migrations)
+- **Audit log**: MongoDB (via pymongo, abstract port)
 - **Auth**: Keycloak (JWT validation, provider-agnostic)
 - **Observability**: OpenTelemetry, structured logging
 - **Storage**: MinIO / S3-compatible (abstract port)
@@ -41,7 +43,7 @@ architectural decisions.
 
 ```bash
 cp .env.example .env        # configure environment variables
-docker compose up -d        # start PostgreSQL
+docker compose up -d        # start databases
 uv sync                     # install dependencies
 ```
 

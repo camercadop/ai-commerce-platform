@@ -65,47 +65,7 @@ def create_app() -> FastAPI:
 
 ## 3. Write the README
 
-Every domain `README.md` must cover:
-
-- What the domain is responsible for.
-- What data it owns.
-- What endpoints it exposes.
-- What events it publishes.
-- What events it consumes.
-- What external dependencies it requires.
-- What configuration it expects.
-
-```markdown
-# <Domain>
-
-Responsible for [...].
-
-## Owned Data
-
-- [list of models]
-
-## Endpoints
-
-- `POST /api/v1/<resource>` — [...]
-- `GET /api/v1/<resource>/{id}` — [...]
-
-## Published Events
-
-- `EventName` — emitted when [...]
-
-## Consumed Events
-
-- `EventName` — triggers [...]
-
-## Dependencies
-
-- `PostgreSQL` — [...]
-- `Kafka` — [...]
-
-## Configuration
-
-- `SETTING_NAME` — description, expected values
-```
+Every domain must have a `README.md`. Follow [writing-module-readme.md](writing-module-readme.md) for structure and content rules.
 
 ## 4. Set up the migration environment
 

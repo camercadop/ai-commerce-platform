@@ -1,0 +1,32 @@
+{
+  "language": {
+    "type": "string",
+    "description": "Preferred display language",
+    "allowed_values": ["en", "es", "fr"],
+    "is_private": false
+  },
+  "timezone": {
+    "type": "string",
+    "description": "Preferred timezone (IANA format)",
+    "allowed_values": null,
+    "is_private": false
+  },
+  "whatsapp_enabled": {
+    "type": "bool",
+    "description": "Enable WhatsApp notifications",
+    "allowed_values": null,
+    "is_private": false
+  },
+  "email_notifications_enabled": {
+    "type": "bool",
+    "description": "Enable email notifications",
+    "allowed_values": null,
+    "is_private": false
+  },
+  "sms_notifications_enabled": {
+    "type": "bool",
+    "description": "Enable SMS notifications",
+    "allowed_values": null,
+    "is_private": false
+  }
+}

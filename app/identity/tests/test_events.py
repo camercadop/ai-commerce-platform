@@ -1,6 +1,10 @@
 from unittest.mock import MagicMock
 
-from app.identity.events import TOPIC, publish_customer_registered
+from app.identity.events import (
+    TOPIC,
+    make_customer_registered_envelope,
+    publish_customer_registered,
+)
 from app.identity.tests.fakes import make_customer
 from app.shared.events import EventEnvelope
 
@@ -35,3 +39,21 @@ class TestPublishCustomerRegistered:
         assert envelope.aggregate_id == str(customer.id)
         assert envelope.data["email"] == "jane@example.com"
         assert envelope.data["first_name"] == "Jane"
+
+
+class TestMakeCustomerRegisteredEnvelope:
+    def test_returns_payload_with_customer_id(self) -> None:
+        import uuid
+
+        customer_id = uuid.uuid4()
+
+        payload = make_customer_registered_envelope(customer_id)
+
+        assert payload["customer_id"] == str(customer_id)
+        assert set(payload.keys()) == {
+            "customer_id",
+            "identity_provider_id",
+            "email",
+            "first_name",
+            "last_name",
+        }

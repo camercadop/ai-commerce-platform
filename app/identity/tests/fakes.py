@@ -2,6 +2,7 @@ import uuid
 from datetime import UTC, datetime
 
 from app.identity.models import Address, Customer, CustomerPreference
+from app.shared.audit_log import AuditPort, AuditRecord
 
 
 def make_customer(**kwargs: object) -> Customer:
@@ -36,6 +37,17 @@ def make_address(**kwargs: object) -> Address:
     address.created_at = kwargs.get("created_at", datetime.now(UTC))  # type: ignore[assignment]
     address.updated_at = kwargs.get("updated_at", datetime.now(UTC))  # type: ignore[assignment]
     return address
+
+
+class FakeAuditPort(AuditPort):
+    """In-memory AuditPort for unit tests."""
+
+    def __init__(self) -> None:
+        self.recorded: list[AuditRecord] = []
+
+    def record(self, entry: AuditRecord) -> None:
+        """Capture the audit record for assertion."""
+        self.recorded.append(entry)
 
 
 class FakeCustomerRepository:
@@ -92,12 +104,38 @@ class FakeAddressRepository:
         a = self._store.get(record_id)
         return a if a and a.deleted_at is None else None
 
-    def list_by_customer(self, customer_id: uuid.UUID) -> list[Address]:
-        """Return all active addresses for the given customer."""
-        return [
+    def get_by_customer_and_label(
+        self, customer_id: uuid.UUID, label: str
+    ) -> Address | None:
+        """Return the active address matching customer_id and label, or None."""
+        return next(
+            (
+                a for a in self._store.values()
+                if a.customer_id == customer_id
+                and a.label == label
+                and a.deleted_at is None
+            ),
+            None,
+        )
+
+    def clear_default(self, customer_id: uuid.UUID) -> None:
+        """Unset is_default on all active addresses for the given customer."""
+        for a in self._store.values():
+            if a.customer_id == customer_id and a.deleted_at is None:
+                a.is_default = False
+
+    def list_by_customer(
+        self,
+        customer_id: uuid.UUID,
+        limit: int | None = None,
+        cursor: object = None,
+    ) -> list[Address]:
+        """Return active addresses for the given customer."""
+        results = [
             a for a in self._store.values()
             if a.customer_id == customer_id and a.deleted_at is None
         ]
+        return results[:limit] if limit is not None else results
 
     def create(self, **kwargs: object) -> Address:
         """Create and store a new address."""

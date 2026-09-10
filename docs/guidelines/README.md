@@ -38,4 +38,5 @@ A guideline document must follow this structure:
 - [event-design.md](event-design.md) — Event envelope, naming, versioning, idempotent consumers.
 - [writing-logs.md](writing-logs.md) — Log levels, formatting, security events, sensitive data.
 - [writing-models.md](writing-models.md) — UUID PKs, timestamps, field comments, indexes, relationships.
+- [writing-module-readme.md](writing-module-readme.md) — Structure and content rules for domain module READMEs.
 - [writing-tests.md](writing-tests.md) — Test layers, dependency injection, fixtures, fakes.
