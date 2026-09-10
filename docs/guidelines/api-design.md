@@ -55,14 +55,17 @@ router = APIRouter(prefix="/api/v1/products")
 All validation and sanitization lives in Pydantic schemas. Route handlers use
 already-validated fields directly.
 
+Use `sanitize_strings` from `shared/api/` to strip control characters — never
+duplicate the validator across schemas.
+
 ```python
+from app.shared.api import sanitize_strings
+
+
 class CreateProductRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
 
-    @field_validator("name")
-    @classmethod
-    def strip_control_characters(cls, v: str) -> str:
-        return v.replace("\n", "").replace("\r", "")
+    _strip = sanitize_strings("name")
 ```
 
 ## 5. Use cursor-based pagination on collection endpoints
@@ -96,31 +99,35 @@ A route handler must only parse the request, call the service, and return the re
 No business logic belongs in a route handler.
 
 ```python
+from typing import Annotated
+
+DbDep = Annotated[Session, Depends(get_db)]
+
+
 @router.post("/", response_model=ProductResponse, status_code=201)
-def create_product(
-    body: CreateProductRequest,
-    service: ProductService = Depends(get_product_service),
-) -> ProductResponse:
-    return service.create(body)
+def create_product(body: CreateProductRequest, db: DbDep) -> ProductResponse:
+    return ProductService(db).create(**body.model_dump())
 ```
 
-## 8. Inject the database session via `Depends(get_db)`
+## 8. Inject dependencies using `Annotated`
 
-The database session is always injected through FastAPI's dependency injection. It must
-never be instantiated directly inside a route handler or service.
+All FastAPI dependencies must use the `Annotated` pattern. Never use `Depends()` in
+default argument values — it triggers linter warnings and is less readable.
 
 ```python
-def get_db() -> Generator[Session, None, None]:
-    with SessionLocal() as session:
-        yield session
+# wrong
+def get_product(db: Session = Depends(get_db)) -> ProductResponse: ...
 
 
-@router.post("/", response_model=ProductResponse, status_code=201)
-def create_product(
-    body: CreateProductRequest,
-    db: Session = Depends(get_db),
-) -> ProductResponse: ...
+# correct
+DbDep = Annotated[Session, Depends(get_db)]
+
+
+def get_product(db: DbDep) -> ProductResponse: ...
 ```
+
+Define `Annotated` type aliases at module level so they can be reused across handlers
+in the same module.
 
 ## 9. Use explicit HTTP status codes
 

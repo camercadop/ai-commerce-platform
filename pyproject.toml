@@ -25,6 +25,7 @@ dev = [
     "mypy>=2.3.1",
     "pre-commit>=4.6.2",
     "types-python-jose>=3.5.0.20260408",
+    "psycopg2-binary>=2.9.12",
 ]
 
 [build-system]
@@ -37,6 +38,7 @@ packages = ["app"]
 [tool.ruff]
 target-version = "py314"
 line-length = 88
+exclude = ["**/tests/**", "**/migrations/**"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
@@ -44,7 +46,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.14"
 strict = true
-exclude = ["tests/", "migrations/"]
+exclude = [".*tests/", ".*migrations/"]
 
 [tool.pytest.ini_options]
 testpaths = ["app"]
