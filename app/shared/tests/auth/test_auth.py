@@ -1,7 +1,7 @@
+import jwt
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from jose import jwt
 from pydantic import ValidationError
 
 from app.shared.auth import (
@@ -129,6 +129,24 @@ def test_auth_middleware_returns_401_without_header(validator: JWTValidator) -> 
 
     client = TestClient(app, raise_server_exceptions=False)
     response = client.get("/protected")
+
+    assert response.status_code == 401
+
+
+def test_auth_middleware_returns_401_for_invalid_token(validator: JWTValidator) -> None:
+    app = FastAPI()
+    get_current_user = build_auth_dependency(validator)
+
+    @app.get("/protected")
+    def protected(
+        claims: TokenClaims = __import__("fastapi").Depends(get_current_user),
+    ) -> dict:  # type: ignore[type-arg]
+        return {"sub": claims.sub}
+
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.get(
+        "/protected", headers={"Authorization": "Bearer not.a.valid.token"}
+    )
 
     assert response.status_code == 401
 

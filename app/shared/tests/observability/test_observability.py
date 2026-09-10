@@ -1,7 +1,9 @@
 import logging
 
 import pytest
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from pydantic import ValidationError
 
@@ -55,6 +57,21 @@ def test_configure_tracing_returns_tracer_provider() -> None:
     )
 
     assert isinstance(provider, TracerProvider)
+
+
+def test_configure_tracing_enabled_uses_otlp_exporter() -> None:
+    provider = configure_tracing(
+        service_name="test-service",
+        otlp_endpoint="http://localhost:4317",
+        enabled=True,
+    )
+
+    processors = provider._active_span_processor._span_processors
+    assert any(
+        isinstance(p, BatchSpanProcessor)
+        and isinstance(p.span_exporter, OTLPSpanExporter)
+        for p in processors
+    )
 
 
 def test_configure_tracing_produces_spans() -> None:

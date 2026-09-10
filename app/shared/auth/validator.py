@@ -1,6 +1,7 @@
 import logging
 
-from jose import ExpiredSignatureError, JWTError, jwt
+import jwt
+import jwt.exceptions
 
 from app.shared.auth.claims import TokenClaims
 
@@ -53,7 +54,7 @@ class JWTValidator:
                 is malformed, or fails audience validation.
         """
         try:
-            options = {"verify_aud": self._audience is not None}
+            options: jwt.types.Options = {"verify_aud": self._audience is not None}
             payload = jwt.decode(
                 token,
                 self._public_key,
@@ -62,9 +63,9 @@ class JWTValidator:
                 options=options,
             )
             return TokenClaims.model_validate(payload)
-        except ExpiredSignatureError:
+        except jwt.exceptions.ExpiredSignatureError:
             logger.warning("JWT validation failed: token expired")
             raise InvalidTokenError("Token has expired") from None
-        except JWTError as exc:
+        except jwt.exceptions.PyJWTError as exc:
             logger.warning("JWT validation failed: %s", exc)
             raise InvalidTokenError("Token is invalid") from exc

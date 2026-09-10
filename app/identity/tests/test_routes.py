@@ -1,6 +1,10 @@
 import uuid
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
+from app.identity.routes import _auth_dependency
+from app.shared.auth import TokenClaims
 
 REGISTER_PAYLOAD = {
     "identity_provider_id": "sub-test",
@@ -125,3 +129,23 @@ def test_health_returns_ok(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_require_owner_returns_404_when_customer_not_found(client: TestClient) -> None:
+    response = client.get(f"/api/v1/customers/{uuid.uuid4()}/addresses")
+
+    assert response.status_code == 404
+
+
+def test_require_owner_returns_404_when_customer_not_owned(
+    app: FastAPI, client: TestClient
+) -> None:
+    created = client.post("/api/v1/customers", json=REGISTER_PAYLOAD).json()
+    customer_id = created["id"]
+
+    different_claims = TokenClaims(sub="different-sub", email="other@example.com")
+    app.dependency_overrides[_auth_dependency] = lambda: different_claims
+
+    response = client.get(f"/api/v1/customers/{customer_id}/addresses")
+
+    assert response.status_code == 404

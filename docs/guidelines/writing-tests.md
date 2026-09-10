@@ -93,3 +93,21 @@ def test_product_is_saved_in_db() -> None:
     assert db.query(Product).count() == 1
 ```
 
+
+## 7. Group related cases with subtests
+
+When a test function covers multiple input/output variations of the same behavior, use `pytest-subtests` instead of separate test functions. Each subtest runs independently, so a single failure does not mask the others.
+
+```python
+def test_sanitizes_strings(subtests: pytest.Subtests) -> None:
+    cases = [
+        ("strips newline", "foo\nbar", "foobar"),
+        ("strips carriage return", "foo\rbar", "foobar"),
+        ("strips both", "foo\r\nbar", "foobar"),
+    ]
+    for description, value, expected in cases:
+        with subtests.test(description):
+            assert _Schema(name=value).name == expected
+```
+
+Use separate test functions when the cases test meaningfully different behaviors or require different setup.

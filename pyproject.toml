@@ -12,7 +12,7 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.65b0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.44.0",
     "opentelemetry-instrumentation-logging>=0.65b0",
-    "python-jose[cryptography]>=3.3.0",
+    "PyJWT[crypto]>=2.10.0",
     "uvicorn>=0.30.0",
 ]
 
@@ -20,11 +20,11 @@ dependencies = [
 dev = [
     "pytest>=9.1.1",
     "pytest-cov>=6.0.0",
-    "httpx>=0.28.0",
+    "httpx2>=0.28.0",
     "ruff>=0.16.6",
     "mypy>=2.3.1",
+    "pip-audit>=2.9.0",
     "pre-commit>=4.6.2",
-    "types-python-jose>=3.5.0.20260408",
     "psycopg2-binary>=2.9.12",
 ]
 
@@ -53,3 +53,12 @@ testpaths = ["app"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["*/tests/*", "*/migrations/*"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+omit = ["*/tests/*", "*/migrations/*"]

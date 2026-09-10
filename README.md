@@ -24,7 +24,7 @@ app/
 └── identity/   # Customer profiles and addresses
 ```
 
-See `docs/architecture.md` for the full system design and `docs/adr/` for
+See [docs/architecture.md](docs/architecture.md) for the full system design and [docs/adr/](docs/adr/) for
 architectural decisions.
 
 ## Tech stack
@@ -80,12 +80,11 @@ TEST_DATABASE_URL=postgresql://commerce:commerce@localhost:5432/commerce_test \
 
 | Path | Description |
 | --- | --- |
-| `docs/architecture.md` | System design and service boundaries |
-| `docs/adr/` | Architectural Decision Records |
-| `docs/guidelines/` | Coding and design guidelines |
-| `docs/development.md` | Developer workflow |
-| `app/shared/README.md` | Shared infrastructure reference |
-| `app/identity/README.md` | Identity domain reference |
+| [docs/architecture.md](docs/architecture.md) | System design and service boundaries |
+| [docs/adr/](docs/adr/) | Architectural Decision Records |
+| [docs/guidelines/](docs/guidelines/) | Coding and design guidelines |
+| [docs/development.md](docs/development.md) | Developer workflow |
+
 
 ## License
 

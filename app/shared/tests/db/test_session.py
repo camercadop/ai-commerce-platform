@@ -12,7 +12,7 @@ def test_database_settings_fails_on_missing_url(
     monkeypatch.delenv("DATABASE_URL", raising=False)
 
     with pytest.raises(ValidationError):
-        DatabaseSettings()
+        DatabaseSettings(_env_file=None)
 
 
 def test_database_settings_loads_url(monkeypatch: pytest.MonkeyPatch) -> None:
