@@ -33,7 +33,7 @@ architectural decisions.
 - **Runtime**: Python 3.14, FastAPI, Pydantic, SQLAlchemy
 - **Database**: PostgreSQL (via Alembic migrations)
 - **Audit log**: MongoDB (via pymongo, abstract port)
-- **Auth**: Keycloak (JWT validation, provider-agnostic)
+- **Auth**: OIDC-compliant provider (JWT validation, provider-agnostic)
 - **Observability**: OpenTelemetry, structured logging
 - **Storage**: MinIO / S3-compatible (abstract port)
 

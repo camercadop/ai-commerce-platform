@@ -22,7 +22,6 @@ class JWTValidator:
     """Validates JWTs against a configured public key and algorithm.
 
     Provider-agnostic — works with any OIDC-compliant token issuer.
-    The concrete issuer (Keycloak, Auth0, etc.) is an identity domain concern.
 
     Args:
         public_key: PEM-encoded RSA public key used to verify token signatures.

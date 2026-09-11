@@ -87,7 +87,7 @@ buzzwords.
 | Kafka         | Durable event streaming         |
 | Redis         | Caching and transient state     |
 | MinIO         | Object storage                  |
-| Keycloak      | Identity and authentication     |
+| OIDC provider | Identity and authentication     |
 | Kong          | API gateway                     |
 | Kubernetes    | Container orchestration         |
 

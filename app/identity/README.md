@@ -1,7 +1,7 @@
 # Identity
 
 Manages customer profiles and addresses. Authentication is delegated to an external
-identity provider (e.g. Keycloak). This domain owns domain-specific customer data
+identity provider (any OIDC-compliant provider). This domain owns domain-specific customer data
 linked to the provider via the JWT `sub` claim.
 
 ## Responsibilities
@@ -263,7 +263,7 @@ erDiagram
 | Dependency | Purpose | Required |
 | --- | --- | --- |
 | PostgreSQL | Primary data store | Yes |
-| Keycloak (or any OIDC provider) | Issues JWTs validated on every request | Yes |
+| OIDC-compliant provider | Issues JWTs validated on every request | Yes |
 | MongoDB | Audit log store via `app/sys_audit/` | No — `NoOpAuditRepository` used when not configured |
 | Message broker | Publishes `CustomerRegistered` events | No — registration succeeds even if publish fails |
 
