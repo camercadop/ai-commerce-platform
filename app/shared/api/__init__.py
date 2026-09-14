@@ -5,6 +5,7 @@ from app.shared.api.schemas import (
     ErrorResponse,
     PaginatedResponse,
     PaginationMeta,
+    RequestContext,
     error_response,
 )
 from app.shared.api.validators import sanitize_strings
@@ -15,6 +16,7 @@ __all__ = [
     "ErrorResponse",
     "PaginatedResponse",
     "PaginationMeta",
+    "RequestContext",
     "decode_cursor",
     "encode_cursor",
     "error_response",

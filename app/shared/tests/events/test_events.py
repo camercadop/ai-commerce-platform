@@ -88,3 +88,23 @@ def test_broker_subscribe_does_not_receive_other_topics(
     broker.publish("catalog.product.created", envelope)
 
     assert len(received) == 0
+
+
+class TestNoOpMessageBroker:
+    def test_publish_does_not_raise(self, envelope: EventEnvelope) -> None:
+        from app.shared.events import NoOpMessageBroker
+
+        broker = NoOpMessageBroker()
+
+        broker.publish("catalog.product.created", envelope)
+
+    def test_subscribe_does_not_raise(self, envelope: EventEnvelope) -> None:
+        from app.shared.events import NoOpMessageBroker
+
+        broker = NoOpMessageBroker()
+        received: list[EventEnvelope] = []
+        broker.subscribe("catalog.product.created", received.append)
+
+        broker.publish("catalog.product.created", envelope)
+
+        assert len(received) == 0

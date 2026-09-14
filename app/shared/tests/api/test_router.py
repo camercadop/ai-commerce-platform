@@ -26,32 +26,40 @@ class _ResponseSchema(BaseModel):
 
 
 _STORED: dict[uuid.UUID, dict[str, Any]] = {}
+_LAST_CONTEXT: dict[str, Any] = {}
 
 
-def _create_fn(body: _CreateSchema, db: Any) -> dict[str, Any]:
+def _create_fn(body: _CreateSchema, db: Any, context: dict[str, Any]) -> dict[str, Any]:
+    _LAST_CONTEXT.update(context)
     record = {"id": RESOURCE_ID, "name": body.name}
     _STORED[RESOURCE_ID] = record
     return record
 
 
-def _get_fn(resource_id: uuid.UUID, db: Any) -> dict[str, Any]:
+def _get_fn(resource_id: uuid.UUID, db: Any, context: dict[str, Any]) -> dict[str, Any]:
+    _LAST_CONTEXT.update(context)
     return _STORED[resource_id]
 
 
-def _update_fn(resource_id: uuid.UUID, data: dict[str, Any], db: Any) -> dict[str, Any]:
+def _update_fn(
+    resource_id: uuid.UUID, data: dict[str, Any], db: Any, context: dict[str, Any]
+) -> dict[str, Any]:
+    _LAST_CONTEXT.update(context)
     _STORED[resource_id].update(data)
     return _STORED[resource_id]
 
 
-def _delete_fn(resource_id: uuid.UUID, db: Any) -> None:
+def _delete_fn(resource_id: uuid.UUID, db: Any, context: dict[str, Any]) -> None:
+    _LAST_CONTEXT.update(context)
     _STORED.pop(resource_id, None)
 
 
 @pytest.fixture(autouse=True)
 def reset_store() -> None:
-    """Reset the in-memory store before each test."""
+    """Reset the in-memory store and context before each test."""
     _STORED.clear()
     _STORED[RESOURCE_ID] = {"id": RESOURCE_ID, "name": "original"}
+    _LAST_CONTEXT.clear()
 
 
 @pytest.fixture
@@ -128,6 +136,61 @@ def test_delete_commits(client: TestClient, db: MagicMock) -> None:
     client.delete(f"/items/{RESOURCE_ID}")
 
     db.commit.assert_called_once()
+
+
+def test_context_request_passed_to_create(client: TestClient) -> None:
+    client.post("/items", json={"name": "widget"})
+
+    assert "request" in _LAST_CONTEXT
+
+
+def test_context_request_passed_to_get(client: TestClient) -> None:
+    client.get(f"/items/{RESOURCE_ID}")
+
+    assert "request" in _LAST_CONTEXT
+
+
+def test_context_request_passed_to_update(client: TestClient) -> None:
+    client.patch(f"/items/{RESOURCE_ID}", json={"name": "updated"})
+
+    assert "request" in _LAST_CONTEXT
+
+
+def test_context_request_passed_to_delete(client: TestClient) -> None:
+    client.delete(f"/items/{RESOURCE_ID}")
+
+    assert "request" in _LAST_CONTEXT
+
+
+def test_context_path_params_accessible(db: MagicMock) -> None:
+    """Path params from a nested prefix are accessible via context['request']."""
+    parent_id = uuid.uuid4()
+    captured: dict[str, Any] = {}
+
+    def _nested_create(
+        body: _CreateSchema, db: Any, context: dict[str, Any]
+    ) -> dict[str, Any]:
+        captured["path_params"] = dict(context["request"].path_params)
+        return {"id": RESOURCE_ID, "name": body.name}
+
+    app = FastAPI()
+    router = CRUDRouter(
+        prefix="/parents/{parent_id}/items",
+        response_model=_ResponseSchema,
+        create_schema=_CreateSchema,
+        update_schema=_UpdateSchema,
+        get_db_dep=lambda: db,
+        create_fn=_nested_create,
+        get_fn=_get_fn,
+        update_fn=_update_fn,
+        delete_fn=_delete_fn,
+    )
+    app.include_router(router)
+    test_client = TestClient(app)
+
+    test_client.post(f"/parents/{parent_id}/items", json={"name": "widget"})
+
+    assert captured["path_params"]["parent_id"] == str(parent_id)
 
 
 def test_service_wiring_delegates_to_service_methods() -> None:

@@ -4,8 +4,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.identity.app import create_app
-from app.identity.routes import _auth_dependency, _db_dependency
+from app.catalog.app import create_app
+from app.catalog.routes import _auth_dependency, _db_dependency
 from app.shared.auth import AuthSettings, TokenClaims
 from app.shared.db import BaseModel, DatabaseSettings, build_session_factory
 
@@ -22,7 +22,7 @@ def setup_schema() -> None:
 
 @pytest.fixture
 def app() -> FastAPI:
-    """Return a configured identity app wired to the test database."""
+    """Return a configured catalog app wired to the test database."""
     db_settings = DatabaseSettings(database_base_url=TEST_DATABASE_URL)
     auth_settings = AuthSettings(
         auth_jwt_public_key="test-key",
@@ -34,7 +34,7 @@ def app() -> FastAPI:
     session_factory = build_session_factory(TEST_DATABASE_URL)
     claims = TokenClaims(sub="sub-test", email="test@example.com")
 
-    def override_db():
+    def override_db():  # type: ignore[return]
         with session_factory() as session:
             yield session
 
@@ -49,13 +49,14 @@ def app() -> FastAPI:
 
 @pytest.fixture(autouse=True)
 def clean_tables(app: FastAPI) -> None:
-    """Truncate all identity tables between tests to ensure isolation."""
+    """Truncate all catalog tables between tests to ensure isolation."""
     session_factory = build_session_factory(TEST_DATABASE_URL)
     with session_factory() as session:
         session.execute(
             __import__("sqlalchemy").text(
-                "TRUNCATE identity_customers, identity_customer_addresses, "
-                "identity_customer_preferences RESTART IDENTITY CASCADE"
+                "TRUNCATE catalog_category_attributes, catalog_variants, "
+                "catalog_products, catalog_categories, catalog_brands "
+                "RESTART IDENTITY CASCADE"
             )
         )
         session.commit()
@@ -63,5 +64,5 @@ def clean_tables(app: FastAPI) -> None:
 
 @pytest.fixture
 def client(app: FastAPI) -> TestClient:
-    """Return a TestClient for the identity app."""
+    """Return a TestClient for the catalog app."""
     return TestClient(app)

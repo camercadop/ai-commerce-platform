@@ -1,6 +1,7 @@
 import uuid
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from app.identity.exceptions import (
     AddressNotFound,
@@ -51,6 +52,24 @@ class TestCustomerServiceRegister:
                 email="other@example.com",
                 first_name="John",
                 last_name="Smith",
+            )
+
+    def test_raises_on_integrity_error(self) -> None:
+        class _RaisingRepo(FakeCustomerRepository):
+            def create(self, **kwargs: object) -> object:
+                raise IntegrityError(None, None, Exception("unique"))
+
+        service = CustomerService.__new__(CustomerService)
+        service.repo = _RaisingRepo()
+        service.session = FakeCustomerPreferenceSession()
+        service._audit = FakeAuditPort()
+
+        with pytest.raises(CustomerAlreadyExists):
+            service.register(
+                identity_provider_id="sub-new",
+                email="new@example.com",
+                first_name="New",
+                last_name="User",
             )
 
 
@@ -124,6 +143,17 @@ class TestCustomerServiceUpdateProfile:
 
 
 class TestCustomerServiceUpdatePreferences:
+    @pytest.fixture(autouse=True)
+    def patch_preferences_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Replace _load_preferences_config with a controlled config for all tests in this class."""
+        monkeypatch.setattr(
+            "app.identity.service._load_preferences_config",
+            lambda: {
+                "language": {"is_private": False},
+                "internal_score": {"is_private": True},
+            },
+        )
+
     def test_inserts_new_preferences(self) -> None:
         customer = make_customer()
         repo = FakeCustomerRepository([customer])
@@ -200,6 +230,17 @@ class TestCustomerServiceUpdatePreferences:
 
         with pytest.raises(InvalidPreferenceKey):
             service.update_preferences(customer.id, {"unknown_key": "value"})
+
+    def test_raises_on_private_preference_key(self) -> None:
+        customer = make_customer()
+        repo = FakeCustomerRepository([customer])
+        service = CustomerService.__new__(CustomerService)
+        service.repo = repo
+        service.session = FakeCustomerPreferenceSession()
+        service._audit = FakeAuditPort()
+
+        with pytest.raises(InvalidPreferenceKey):
+            service.update_preferences(customer.id, {"internal_score": "42"})
 
 
 class TestAddressServiceListAddresses:
@@ -359,6 +400,39 @@ class TestAddressServiceUpdateAddress:
         with pytest.raises(AddressNotFound):
             service.update_address(customer.id, address.id, {"city": "x"})
 
+    def test_clears_default_when_is_default_true(self) -> None:
+        customer = make_customer()
+        existing_default = make_address(customer_id=customer.id, label="Work", is_default=True)
+        address = make_address(customer_id=customer.id, label="Home", is_default=False)
+        service = AddressService.__new__(AddressService)
+        service.repo = FakeAddressRepository([existing_default, address])
+        service.customer_repo = FakeCustomerRepository([customer])
+        service._audit = FakeAuditPort()
+
+        service.update_address(customer.id, address.id, {"is_default": True})
+
+        assert existing_default.is_default is False
+        assert address.is_default is True
+
+    def test_raises_if_customer_not_found(self) -> None:
+        service = AddressService.__new__(AddressService)
+        service.repo = FakeAddressRepository()
+        service.customer_repo = FakeCustomerRepository()
+        service._audit = FakeAuditPort()
+
+        with pytest.raises(CustomerNotFound):
+            service.update_address(uuid.uuid4(), uuid.uuid4(), {"city": "x"})
+
+    def test_raises_if_address_not_found(self) -> None:
+        customer = make_customer()
+        service = AddressService.__new__(AddressService)
+        service.repo = FakeAddressRepository()
+        service.customer_repo = FakeCustomerRepository([customer])
+        service._audit = FakeAuditPort()
+
+        with pytest.raises(AddressNotFound):
+            service.update_address(customer.id, uuid.uuid4(), {"city": "x"})
+
 
 class TestAddressServiceRemoveAddress:
     def test_soft_deletes_address(self) -> None:
@@ -401,3 +475,23 @@ class TestAddressServiceRemoveAddress:
 
         with pytest.raises(AddressNotFound):
             service.remove_address(customer.id, uuid.uuid4())
+
+    def test_raises_if_customer_not_found(self) -> None:
+        service = AddressService.__new__(AddressService)
+        service.repo = FakeAddressRepository()
+        service.customer_repo = FakeCustomerRepository()
+        service._audit = FakeAuditPort()
+
+        with pytest.raises(CustomerNotFound):
+            service.remove_address(uuid.uuid4(), uuid.uuid4())
+
+    def test_raises_if_address_belongs_to_other_customer(self) -> None:
+        customer = make_customer()
+        address = make_address(customer_id=uuid.uuid4())
+        service = AddressService.__new__(AddressService)
+        service.repo = FakeAddressRepository([address])
+        service.customer_repo = FakeCustomerRepository([customer])
+        service._audit = FakeAuditPort()
+
+        with pytest.raises(AddressNotFound):
+            service.remove_address(customer.id, address.id)

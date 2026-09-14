@@ -9,18 +9,18 @@ from app.shared.db import DatabaseSettings, build_session_factory, get_db
 def test_database_settings_fails_on_missing_url(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_BASE_URL", raising=False)
 
     with pytest.raises(ValidationError):
         DatabaseSettings(_env_file=None)
 
 
 def test_database_settings_loads_url(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("DATABASE_BASE_URL", "sqlite:///:memory:")
 
     settings = DatabaseSettings()
 
-    assert settings.database_url == "sqlite:///:memory:"
+    assert settings.database_base_url == "sqlite:///:memory:"
 
 
 def test_build_session_factory_returns_sessions() -> None:

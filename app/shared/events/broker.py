@@ -41,3 +41,27 @@ class MessageBroker(ABC):
             topic: The broker topic to subscribe to.
             handler: Callable that receives a deserialized EventEnvelope.
         """
+
+
+class NoOpMessageBroker(MessageBroker):
+    """No-op message broker that silently discards all published events.
+
+    Use in tests and local development environments where a real broker is
+    not available. Never use in production.
+    """
+
+    def publish(self, topic: str, envelope: EventEnvelope) -> None:
+        """Discard the event envelope without publishing.
+
+        Args:
+            topic: The broker topic (ignored).
+            envelope: The event envelope (ignored).
+        """
+
+    def subscribe(self, topic: str, handler: Callable[[EventEnvelope], None]) -> None:
+        """No-op subscription — handlers are never called.
+
+        Args:
+            topic: The broker topic (ignored).
+            handler: The handler callable (ignored).
+        """

@@ -3,6 +3,7 @@ from app.shared.api import (
     ErrorResponse,
     PaginatedResponse,
     PaginationMeta,
+    RequestContext,
     error_response,
 )
 
@@ -49,3 +50,38 @@ def test_error_response_helper() -> None:
     assert result == {
         "error": {"code": "PRODUCT_NOT_FOUND", "message": "Product not found: 123"}
     }
+
+
+class TestRequestContext:
+    def _make_request(
+        self,
+        path_params: dict | None = None,
+        query_string: bytes = b"",
+        headers: list[tuple[bytes, bytes]] | None = None,
+    ) -> RequestContext:
+        from starlette.requests import Request
+
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "query_string": query_string,
+            "headers": headers or [],
+            "path_params": path_params or {},
+        }
+        return RequestContext.model_validate({"request": Request(scope)})
+
+    def test_exposes_path_params(self) -> None:
+        ctx = self._make_request(path_params={"product_id": "abc-123"})
+
+        assert ctx.path_params == {"product_id": "abc-123"}
+
+    def test_exposes_query_params(self) -> None:
+        ctx = self._make_request(query_string=b"cursor=xyz")
+
+        assert ctx.query_params == {"cursor": "xyz"}
+
+    def test_exposes_headers(self) -> None:
+        ctx = self._make_request(headers=[(b"x-request-id", b"req-1")])
+
+        assert ctx.headers["x-request-id"] == "req-1"

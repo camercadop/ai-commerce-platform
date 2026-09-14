@@ -102,6 +102,13 @@ def test_validator_raises_for_malformed_token(validator: JWTValidator) -> None:
         validator.validate("not.a.token")
 
 
+def test_validator_raises_for_expired_token(validator: JWTValidator) -> None:
+    token = _make_token({"sub": "user-123", "exp": 1})
+
+    with pytest.raises(InvalidTokenError):
+        validator.validate(token)
+
+
 def test_validator_defaults_missing_optional_claims(validator: JWTValidator) -> None:
     token = _make_token({"sub": "user-456"})
 

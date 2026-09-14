@@ -1,7 +1,7 @@
 import logging
 import uuid
 from collections.abc import Callable
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -98,7 +98,9 @@ def _require_owner(
 
 
 def _create_customer(audit: AuditPort) -> Callable[..., object]:
-    def _fn(body: RegisterCustomerRequest, db: Session) -> object:
+    def _fn(
+        body: RegisterCustomerRequest, db: Session, context: dict[str, Any]
+    ) -> object:
         return CustomerService(db, audit=audit).register(
             identity_provider_id=body.identity_provider_id,
             email=body.email,
@@ -110,21 +112,26 @@ def _create_customer(audit: AuditPort) -> Callable[..., object]:
 
 
 def _get_customer(audit: AuditPort) -> Callable[..., object]:
-    def _fn(customer_id: uuid.UUID, db: Session) -> object:
+    def _fn(customer_id: uuid.UUID, db: Session, context: dict[str, Any]) -> object:
         return CustomerService(db, audit=audit).get_profile(customer_id)
 
     return _fn
 
 
 def _update_customer(audit: AuditPort) -> Callable[..., object]:
-    def _fn(customer_id: uuid.UUID, data: dict[str, object], db: Session) -> object:
+    def _fn(
+        customer_id: uuid.UUID,
+        data: dict[str, Any],
+        db: Session,
+        context: dict[str, Any],
+    ) -> object:
         return CustomerService(db, audit=audit).update_profile(customer_id, data)
 
     return _fn
 
 
 def _delete_customer(audit: AuditPort) -> Callable[..., None]:
-    def _fn(customer_id: uuid.UUID, db: Session) -> None:
+    def _fn(customer_id: uuid.UUID, db: Session, context: dict[str, Any]) -> None:
         service = CustomerService(db, audit=audit)
         customer = service.get_profile(customer_id)
         service.repo.delete(customer)

@@ -3,13 +3,31 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy.orm import Session
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.identity.models import Customer
 from app.identity.repository import CustomerRepository
-from app.shared.db import BaseModel, build_session_factory
+from app.shared.db import BaseModel, BaseRepository, TimestampMixin, build_session_factory
 
 TEST_DATABASE_URL = os.environ["TEST_DATABASE_URL"]
+
+
+class _DummyModel(TimestampMixin, BaseModel):
+    """Minimal model without SoftDeleteMixin for hard-delete tests."""
+
+    __tablename__ = "_test_dummy"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(50))
+
+
+class _DummyRepository(BaseRepository[_DummyModel]):
+    """Repository for _DummyModel used in hard-delete tests."""
+
+    model_class = _DummyModel
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -18,7 +36,6 @@ def setup_schema() -> None:
     session_factory = build_session_factory(TEST_DATABASE_URL)
     engine = session_factory.kw["bind"]
     BaseModel.metadata.create_all(engine)
-
 
 @pytest.fixture
 def session() -> Session:
@@ -60,3 +77,16 @@ class TestListPage:
         assert c1.id not in ids
         assert c2.id in ids
         assert c3.id in ids
+
+
+class TestDelete:
+    def test_hard_deletes_non_soft_delete_model(self, session: Session) -> None:
+        record = _DummyModel(name="test")
+        session.add(record)
+        session.flush()
+        record_id = record.id
+
+        repo = _DummyRepository(session)
+        repo.delete(record)
+
+        assert repo.get_by_id(record_id) is None

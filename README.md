@@ -22,7 +22,8 @@ provides platform primitives with no business logic.
 app/
 ├── shared/     # Platform infrastructure (auth, db, events, observability, storage, audit_log)
 ├── sys_audit/  # Audit log implementation
-└── identity/   # Customer profiles and addresses
+├── identity/   # Customer profiles and addresses
+└── catalog/    # Product catalog (categories, brands, products, variants)
 ```
 
 See [docs/architecture.md](docs/architecture.md) for the full system design and [docs/adr/](docs/adr/) for
@@ -43,14 +44,14 @@ architectural decisions.
 
 ```bash
 cp .env.example .env        # configure environment variables
-docker compose up -d        # start databases
+docker compose up -d postgres  # start database
 uv sync                     # install dependencies
 ```
 
-Run migrations for each domain:
+Run migrations for each domain (each owns its own Alembic config):
 
 ```bash
-uv run alembic -c app/identity/migrations/alembic.ini upgrade head
+uv run alembic -c app/<domain>/migrations/alembic.ini upgrade head
 ```
 
 ## Development
@@ -70,8 +71,8 @@ uv run pre-commit install
 
 ## Testing
 
-Tests require a running PostgreSQL instance. Copy `.env.test` and set
-`TEST_DATABASE_URL` before running:
+Tests require a running PostgreSQL instance. The test database is created
+automatically on the first run. Set `TEST_DATABASE_URL` before running:
 
 ```bash
 TEST_DATABASE_URL=postgresql://commerce:commerce@localhost:5432/commerce_test \

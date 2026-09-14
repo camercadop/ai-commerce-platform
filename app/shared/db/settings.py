@@ -8,4 +8,4 @@ class DatabaseSettings(AppSettings):
     value causes the application to fail before serving any traffic (ADR-015).
     """
 
-    database_url: str
+    database_base_url: str

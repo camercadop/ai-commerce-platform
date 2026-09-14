@@ -14,30 +14,19 @@ Developer workflow lives in `docs/development.md`.
 ```
 ai-commerce-platform/
 ├── app/
-│   ├── catalog/
-│   ├── commerce/
-│   ├── inventory/
-│   ├── payment/
-│   ├── identity/
-│   ├── ai_agent/
-│   ├── search/
-│   ├── media/
-│   ├── notification/
-│   ├── shopify/
-│   ├── audit/          # Each domain follows the internal structure described in Module Layout
+│   ├── identity/       # Customer profiles and addresses
+│   ├── sys_audit/      # Audit log implementation
 │   └── shared/
 │       ├── api/
+│       ├── audit_log/
+│       ├── auth/
 │       ├── config/
 │       ├── db/
 │       ├── events/
 │       ├── observability/
-│       ├── auth/
 │       └── storage/
-├── notebooks/
-├── infra/
-│   ├── k8s/
-│   ├── terraform/
-│   └── docker/
+├── docker/
+│   └── postgres/       # Postgres init scripts
 ├── docs/
 ├── pyproject.toml
 └── uv.lock
@@ -101,6 +90,8 @@ No domain may read environment variables directly outside of its Settings class.
 
 Each domain has its own Alembic environment under `app/<domain>/migrations/`, with its own `env.py`, `alembic.ini`, and `versions/` directory. Migration histories are never shared across domains.
 
-This enforces data ownership (ADR-001) at the migration level and ensures that extracting a domain into a separate service requires no migration history untangling.
+Each domain connects to its own PostgreSQL database (`commerce_<domain>`), provisioned automatically by `docker/postgres/init.sh` on container startup. This enforces data ownership (ADR-001) at the infrastructure level and ensures that extracting a domain into a separate service requires no database untangling.
+
+All domain migration environments share a single `DATABASE_BASE_URL` (without the database name). Each `env.py` appends its own database name to build the full connection URL.
 
 See `docs/development.md` for the migration workflow.
