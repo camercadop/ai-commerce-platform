@@ -72,11 +72,10 @@ uv run pre-commit install
 ## Testing
 
 Tests require a running PostgreSQL instance. The test database is created
-automatically on the first run. Set `TEST_DATABASE_URL` before running:
+automatically on the first run:
 
 ```bash
-TEST_DATABASE_URL=postgresql://commerce:commerce@localhost:5432/commerce_test \
-  uv run pytest
+uv run pytest
 ```
 
 ## Documentation
