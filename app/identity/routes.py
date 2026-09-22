@@ -1,7 +1,6 @@
 import logging
 import uuid
-from collections.abc import Callable
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -13,6 +12,7 @@ from app.identity.exceptions import (
     CustomerNotFound,
     InvalidPreferenceKey,
 )
+from app.identity.repository import AddressRepository, CustomerRepository
 from app.identity.schemas import (
     AddAddressRequest,
     AddressResponse,
@@ -23,7 +23,7 @@ from app.identity.schemas import (
     UpsertPreferencesRequest,
 )
 from app.identity.service import ADDRESS_PAGE_SIZE, AddressService, CustomerService
-from app.shared.api import CRUDRouter, decode_cursor, error_response, paginate
+from app.shared.api import decode_cursor, error_response, paginate
 from app.shared.api.schemas import PaginatedResponse
 from app.shared.audit_log import AuditPort
 from app.shared.auth import TokenClaims
@@ -54,8 +54,8 @@ def _auth_dependency() -> TokenClaims:
 def _audit_dependency() -> AuditPort:
     """Sentinel dependency overridden at application startup via dependency_overrides.
 
-    Never called directly. app.py replaces this with a MongoAuditRepository
-    instance built from MongoSettings.
+    Never called directly. app.py replaces this with the resolved singleton from
+    IdentityContainer.
     """
     raise NotImplementedError  # pragma: no cover
 
@@ -71,6 +71,31 @@ def _to_customer_response(customer: object) -> CustomerResponse:
 
 def _to_address_response(address: object) -> AddressResponse:
     return AddressResponse.model_validate(address, from_attributes=True)
+
+
+# ---------------------------------------------------------------------------
+# Service dependency factories
+# ---------------------------------------------------------------------------
+
+
+def _get_customer_service(
+    db: DbDep,
+    audit: AuditDep,
+) -> CustomerService:
+    """FastAPI dependency that builds a CustomerService for the current request."""
+    return CustomerService(CustomerRepository(db), audit)
+
+
+def _get_address_service(
+    db: DbDep,
+    audit: AuditDep,
+) -> AddressService:
+    """FastAPI dependency that builds an AddressService for the current request."""
+    return AddressService(AddressRepository(db), CustomerRepository(db), audit)
+
+
+CustomerServiceDep = Annotated[CustomerService, Depends(_get_customer_service)]
+AddressServiceDep = Annotated[AddressService, Depends(_get_address_service)]
 
 
 def _require_owner(
@@ -91,76 +116,77 @@ def _require_owner(
         db: Active database session.
         audit: Audit port for recording state-changing operations.
     """
-    service = CustomerService(db, audit)
+    service = CustomerService(CustomerRepository(db), audit)
     customer = service.repo.get_by_id(customer_id)
     if customer is None or customer.identity_provider_id != claims.sub:
         raise CustomerNotFound(customer_id)
 
 
-def _create_customer(audit: AuditPort) -> Callable[..., object]:
-    def _fn(
-        body: RegisterCustomerRequest, db: Session, context: dict[str, Any]
-    ) -> object:
-        return CustomerService(db, audit=audit).register(
+# ---------------------------------------------------------------------------
+# Customer routes
+# ---------------------------------------------------------------------------
+
+customer_router = APIRouter()
+
+
+@customer_router.post(PREFIX, response_model=CustomerResponse, status_code=201)
+def create_customer(
+    body: RegisterCustomerRequest,
+    db: DbDep,
+    service: CustomerServiceDep,
+) -> CustomerResponse:
+    """Register a new customer profile."""
+    result = _to_customer_response(
+        service.register(
             identity_provider_id=body.identity_provider_id,
             email=body.email,
             first_name=body.first_name,
             last_name=body.last_name,
         )
-
-    return _fn
-
-
-def _get_customer(audit: AuditPort) -> Callable[..., object]:
-    def _fn(customer_id: uuid.UUID, db: Session, context: dict[str, Any]) -> object:
-        return CustomerService(db, audit=audit).get_profile(customer_id)
-
-    return _fn
-
-
-def _update_customer(audit: AuditPort) -> Callable[..., object]:
-    def _fn(
-        customer_id: uuid.UUID,
-        data: dict[str, Any],
-        db: Session,
-        context: dict[str, Any],
-    ) -> object:
-        return CustomerService(db, audit=audit).update_profile(customer_id, data)
-
-    return _fn
-
-
-def _delete_customer(audit: AuditPort) -> Callable[..., None]:
-    def _fn(customer_id: uuid.UUID, db: Session, context: dict[str, Any]) -> None:
-        service = CustomerService(db, audit=audit)
-        customer = service.get_profile(customer_id)
-        service.repo.delete(customer)
-
-    return _fn
-
-
-def build_customer_router(audit: AuditPort) -> APIRouter:
-    """Build the customer CRUD router with the given audit port.
-
-    Closes over the audit instance so CRUDRouter callbacks do not need to
-    call the _audit_dependency sentinel directly.
-
-    Args:
-        audit: The audit port to inject into service instances.
-    """
-    return CRUDRouter(
-        prefix=PREFIX,
-        response_model=CustomerResponse,
-        to_response=_to_customer_response,
-        create_schema=RegisterCustomerRequest,
-        update_schema=UpdateProfileRequest,
-        get_db_dep=_db_dependency,
-        create_fn=_create_customer(audit),
-        get_fn=_get_customer(audit),
-        update_fn=_update_customer(audit),
-        delete_fn=_delete_customer(audit),
     )
+    db.commit()
+    return result
 
+
+@customer_router.get(f"{PREFIX}/{{customer_id}}", response_model=CustomerResponse)
+def get_customer(
+    customer_id: uuid.UUID,
+    service: CustomerServiceDep,
+) -> CustomerResponse:
+    """Return the customer profile with the given id."""
+    return _to_customer_response(service.get_profile(customer_id))
+
+
+@customer_router.patch(f"{PREFIX}/{{customer_id}}", response_model=CustomerResponse)
+def update_customer(
+    customer_id: uuid.UUID,
+    body: UpdateProfileRequest,
+    db: DbDep,
+    service: CustomerServiceDep,
+) -> CustomerResponse:
+    """Partially update the customer profile with the given id."""
+    result = _to_customer_response(
+        service.update_profile(customer_id, body.model_dump(exclude_unset=True))
+    )
+    db.commit()
+    return result
+
+
+@customer_router.delete(f"{PREFIX}/{{customer_id}}", status_code=204)
+def delete_customer(
+    customer_id: uuid.UUID,
+    db: DbDep,
+    service: CustomerServiceDep,
+) -> None:
+    """Delete the customer profile with the given id."""
+    customer = service.get_profile(customer_id)
+    service.repo.delete(customer)
+    db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Address routes
+# ---------------------------------------------------------------------------
 
 address_router = APIRouter(prefix=PREFIX, dependencies=[Depends(_require_owner)])
 
@@ -170,10 +196,10 @@ def upsert_preferences(
     customer_id: uuid.UUID,
     body: UpsertPreferencesRequest,
     db: DbDep,
-    audit: AuditDep,
+    service: CustomerServiceDep,
 ) -> dict[str, str]:
     """Upsert preferences for the given customer."""
-    CustomerService(db, audit).update_preferences(customer_id, body.preferences)
+    service.update_preferences(customer_id, body.preferences)
     db.commit()
     return {}
 
@@ -184,13 +210,12 @@ def upsert_preferences(
 )
 def list_addresses(
     customer_id: uuid.UUID,
-    db: DbDep,
-    audit: AuditDep,
+    service: AddressServiceDep,
     cursor: str | None = None,
 ) -> PaginatedResponse[AddressResponse]:
     """Return a paginated page of active addresses for the given customer."""
     decoded_cursor = decode_cursor(cursor) if cursor else None
-    rows = AddressService(db, audit).list_addresses(customer_id, decoded_cursor)
+    rows = service.list_addresses(customer_id, decoded_cursor)
     return paginate(
         rows=rows,
         page_size=ADDRESS_PAGE_SIZE,
@@ -208,10 +233,10 @@ def add_address(
     customer_id: uuid.UUID,
     body: AddAddressRequest,
     db: DbDep,
-    audit: AuditDep,
+    service: AddressServiceDep,
 ) -> AddressResponse:
     """Add a new address for the given customer."""
-    address = AddressService(db, audit).add_address(customer_id, **body.model_dump())
+    address = service.add_address(customer_id, **body.model_dump())
     db.commit()
     return _to_address_response(address)
 
@@ -224,10 +249,10 @@ def update_address(
     address_id: uuid.UUID,
     body: UpdateAddressRequest,
     db: DbDep,
-    audit: AuditDep,
+    service: AddressServiceDep,
 ) -> AddressResponse:
     """Partially update an address owned by the given customer."""
-    address = AddressService(db, audit).update_address(
+    address = service.update_address(
         customer_id, address_id, body.model_dump(exclude_unset=True)
     )
     db.commit()
@@ -239,11 +264,16 @@ def remove_address(
     customer_id: uuid.UUID,
     address_id: uuid.UUID,
     db: DbDep,
-    audit: AuditDep,
+    service: AddressServiceDep,
 ) -> None:
     """Soft-delete an address owned by the given customer."""
-    AddressService(db, audit).remove_address(customer_id, address_id)
+    service.remove_address(customer_id, address_id)
     db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Exception handlers
+# ---------------------------------------------------------------------------
 
 
 def register_exception_handlers(app: FastAPI) -> None:

@@ -28,30 +28,157 @@ Pure logic (services, domain rules) must be tested without DB access.
 
 ## 3. Inject dependencies explicitly
 
-Never patch internals. Pass test implementations through the same injection path used in production.
+Never patch internals. Pass test implementations through the same constructor path used in production. Never use `__new__` to bypass `__init__` — if a service cannot be constructed with fakes through its constructor, the service needs to be refactored to accept its dependencies directly.
+
+Use a private builder function in the test module to construct services with injected fakes. Accept pre-populated data as optional arguments to keep individual tests minimal.
 
 ```python
-def test_creates_product() -> None:
-    repo = FakeProductRepository()
-    service = ProductService(repository=repo)
+def _category_service(categories: list | None = None) -> CategoryService:
+    return CategoryService(
+        repo=FakeCategoryRepository(categories),
+        audit=FakeAuditPort(),
+        broker=NoOpMessageBroker(),
+    )
 
-    product = service.create(name="Headphones", price=99)
 
-    assert repo.saved == [product]
+def test_raises_if_not_found() -> None:
+    svc = _category_service()
+
+    with pytest.raises(CategoryNotFound):
+        svc.get(uuid.uuid4())
 ```
 
-## 4. Write route smoke tests using the test client
+## 4. Build model instances with `make_*` functions
 
-Every endpoint must have at least one smoke test.
+Use a `make_<model>` function in `fakes.py` to construct model instances for tests. Each function accepts `**kwargs` and provides a sensible default for every field so individual tests only specify what is relevant to the case being tested.
+
+Instantiate the model directly and assign fields one by one:
 
 ```python
+def make_customer(**kwargs: object) -> Customer:
+    """Build a Customer instance with sensible defaults for testing."""
+    customer = Customer()
+    customer.id = kwargs.get("id", uuid.uuid4())
+    customer.email = kwargs.get("email", "test@example.com")
+    customer.first_name = kwargs.get("first_name", "Jane")
+    customer.deleted_at = kwargs.get("deleted_at")
+    customer.created_at = kwargs.get("created_at", datetime.now(UTC))
+    return customer
+```
+
+`deleted_at` defaults to `None` (active record). Tests that need a soft-deleted record pass `deleted_at=datetime.now(UTC)` explicitly.
+
+Fake repository `create()` methods reuse the domain's own `make_*` function rather than duplicating field assignment:
+
+```python
+def create(self, **kwargs: object) -> Customer:
+    customer = make_customer(**kwargs)
+    self._store[customer.id] = customer
+    return customer
+```
+
+## 5. Write route smoke tests using the test client
+
+A route smoke test verifies that the endpoint is wired correctly — the right handler is reached, the right status code is returned, and error mapping works. It does not assert response body details or business logic; those belong in the service tests.
+
+Cover the happy path and the primary error cases (404, 409) for each endpoint. Assert only the status code.
+
+Define reusable request payloads as module-level constants:
+
+```python
+PRODUCT_PAYLOAD = {"sku": "SKU-001", "name": "Widget", "base_price": "9.99"}
+
+
 def test_create_product_returns_201(client: TestClient) -> None:
-    response = client.post("/products", json={"name": "Headphones", "price": 99})
+    response = client.post("/api/v1/catalog/products", json=PRODUCT_PAYLOAD)
 
     assert response.status_code == 201
+
+
+def test_create_product_conflict_returns_409(client: TestClient) -> None:
+    client.post("/api/v1/catalog/products", json=PRODUCT_PAYLOAD)
+    response = client.post("/api/v1/catalog/products", json=PRODUCT_PAYLOAD)
+
+    assert response.status_code == 409
+
+
+def test_get_product_not_found_returns_404(client: TestClient) -> None:
+    response = client.get(f"/api/v1/catalog/products/{uuid.uuid4()}")
+
+    assert response.status_code == 404
 ```
 
-## 5. Place shared test utilities inside the domain's `tests/` directory
+## 6. Simulate integrity errors with a raising repository
+
+To test that a service correctly handles database constraint violations, define a private `_IntegrityErrorOnWrite` mixin in `fakes.py` that overrides `create()` and `update()` to raise `IntegrityError`. Concrete classes combine the mixin with the relevant fake repository, with the mixin listed first so its methods take precedence.
+
+```python
+class _IntegrityErrorOnWrite:
+    """Mixin that raises IntegrityError on create and update."""
+
+    def _raise(self) -> None:
+        raise IntegrityError(None, None, Exception("unique constraint"))
+
+    def create(self, **kwargs: Any) -> Any:  # type: ignore[override]
+        self._raise()
+
+    def update(self, record: Any, data: Any) -> Any:  # type: ignore[override]
+        self._raise()
+
+
+class IntegrityErrorProductRepository(_IntegrityErrorOnWrite, FakeProductRepository):
+    pass
+```
+
+In the test, pass the raising repository directly to the service builder:
+
+```python
+def test_raises_on_duplicate_sku(self) -> None:
+    service = _product_service(repo=IntegrityErrorProductRepository())
+
+    with pytest.raises(ProductAlreadyExists):
+        service.create(sku="SKU-001", ...)
+```
+
+## 7. Structure `conftest.py` consistently
+
+`conftest.py` is the only place for pytest fixtures shared across test files in a domain. Every domain with a route layer has at least these fixtures, in this order:
+
+- `setup_schema` — `scope="session"`, `autouse=True`. Creates all tables once per session via `BaseModel.metadata.create_all(engine)`.
+- `app` — constructs the domain's FastAPI app wired to the test database. Overrides `_db_dependency` and `_auth_dependency` so route tests run without real auth or a production database.
+- `clean_tables` — `autouse=True`. Truncates all domain tables between tests using `TRUNCATE ... RESTART IDENTITY CASCADE`. List tables in dependency order (children before parents) to avoid FK violations.
+- `client` — returns a `TestClient` wrapping the `app` fixture.
+
+Add further fixtures as the domain requires. The baseline above applies to any domain that exposes HTTP endpoints.
+
+## 8. Group test classes by service
+
+One class per service method, named `Test<Service><Method>`:
+
+```python
+class TestCategoryServiceCreate: ...
+
+
+class TestCategoryServiceGet: ...
+
+
+class TestCategoryServiceUpdate: ...
+```
+
+Classes for the same service are grouped together. Each group is preceded by a section separator:
+
+```python
+# ---------------------------------------------------------------------------
+# CategoryService
+# ---------------------------------------------------------------------------
+
+
+class TestCategoryServiceCreate: ...
+```
+
+Two blank lines separate the separator from the first class (standard PEP 8 between top-level definitions). Two blank lines also separate each group from the next separator.
+
+## 9. Place shared test utilities inside the domain's `tests/` directory
 
 Fixtures, fakes, and factories live inside the domain they support.
 
@@ -64,7 +191,7 @@ app/catalog/tests/
 
 Production code must never import from a `tests/` directory.
 
-## 6. What not to test
+## 10. What not to test
 
 **Framework behavior** — do not test what FastAPI, SQLAlchemy, or Pydantic already guarantee.
 
@@ -94,7 +221,7 @@ def test_product_is_saved_in_db() -> None:
 ```
 
 
-## 7. Group related cases with subtests
+## 11. Group related cases with subtests
 
 When a test function covers multiple input/output variations of the same behavior, use `pytest-subtests` instead of separate test functions. Each subtest runs independently, so a single failure does not mask the others.
 

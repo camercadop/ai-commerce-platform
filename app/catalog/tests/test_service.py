@@ -68,19 +68,19 @@ class TestPublish:
 def _category_service(
     categories: list | None = None,
 ) -> CategoryService:
-    svc = CategoryService.__new__(CategoryService)
-    svc.repo = FakeCategoryRepository(categories)
-    svc._audit = FakeAuditPort()
-    svc._broker = NoOpMessageBroker()
-    return svc
+    return CategoryService(
+        repo=FakeCategoryRepository(categories),
+        audit=FakeAuditPort(),
+        broker=NoOpMessageBroker(),
+    )
 
 
 def _brand_service(brands: list | None = None) -> BrandService:
-    svc = BrandService.__new__(BrandService)
-    svc.repo = FakeBrandRepository(brands)
-    svc._audit = FakeAuditPort()
-    svc._broker = NoOpMessageBroker()
-    return svc
+    return BrandService(
+        repo=FakeBrandRepository(brands),
+        audit=FakeAuditPort(),
+        broker=NoOpMessageBroker(),
+    )
 
 
 def _product_service(
@@ -88,13 +88,13 @@ def _product_service(
     categories: list | None = None,
     brands: list | None = None,
 ) -> ProductService:
-    svc = ProductService.__new__(ProductService)
-    svc.repo = FakeProductRepository(products)
-    svc._category_repo = FakeCategoryRepository(categories)
-    svc._brand_repo = FakeBrandRepository(brands)
-    svc._audit = FakeAuditPort()
-    svc._broker = NoOpMessageBroker()
-    return svc
+    return ProductService(
+        repo=FakeProductRepository(products),
+        category_repo=FakeCategoryRepository(categories),
+        brand_repo=FakeBrandRepository(brands),
+        audit=FakeAuditPort(),
+        broker=NoOpMessageBroker(),
+    )
 
 
 def _variant_service(
@@ -103,26 +103,26 @@ def _variant_service(
     categories: list | None = None,
     attributes: list | None = None,
 ) -> VariantService:
-    svc = VariantService.__new__(VariantService)
-    svc.repo = FakeVariantRepository(variants)
-    svc._product_repo = FakeProductRepository(products)
-    svc._category_repo = FakeCategoryRepository(categories)
-    svc._attr_repo = FakeCategoryAttributeRepository(attributes)
-    svc._audit = FakeAuditPort()
-    svc._broker = NoOpMessageBroker()
-    return svc
+    return VariantService(
+        repo=FakeVariantRepository(variants),
+        product_repo=FakeProductRepository(products),
+        category_repo=FakeCategoryRepository(categories),
+        attr_repo=FakeCategoryAttributeRepository(attributes),
+        audit=FakeAuditPort(),
+        broker=NoOpMessageBroker(),
+    )
 
 
 def _attribute_service(
     attributes: list | None = None,
     categories: list | None = None,
 ) -> CategoryAttributeService:
-    svc = CategoryAttributeService.__new__(CategoryAttributeService)
-    svc.repo = FakeCategoryAttributeRepository(attributes)
-    svc._category_repo = FakeCategoryRepository(categories)
-    svc._audit = FakeAuditPort()
-    svc._broker = NoOpMessageBroker()
-    return svc
+    return CategoryAttributeService(
+        repo=FakeCategoryAttributeRepository(attributes),
+        category_repo=FakeCategoryRepository(categories),
+        audit=FakeAuditPort(),
+        broker=NoOpMessageBroker(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -735,11 +735,12 @@ class TestCategoryAttributeServiceDelete:
     def test_hard_deletes(self) -> None:
         attr = make_category_attribute()
         repo = FakeCategoryAttributeRepository([attr])
-        svc = CategoryAttributeService.__new__(CategoryAttributeService)
-        svc.repo = repo
-        svc._category_repo = FakeCategoryRepository()
-        svc._audit = FakeAuditPort()
-        svc._broker = NoOpMessageBroker()
+        svc = CategoryAttributeService(
+            repo=repo,
+            category_repo=FakeCategoryRepository(),
+            audit=FakeAuditPort(),
+            broker=NoOpMessageBroker(),
+        )
 
         svc.delete(_ACTOR, attr.id)
 

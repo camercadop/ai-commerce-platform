@@ -23,6 +23,13 @@ class Product(TimestampMixin, BaseModel):
 Every model must declare its own UUID primary key as the first column. This ensures
 `id` appears first in the migration output and the database table definition.
 
+Declare class attributes in this order:
+1. `__tablename__`
+2. `__table_args__` (if any)
+3. `id` primary key
+4. remaining columns
+5. relationships
+
 ```python
 import uuid
 from sqlalchemy import UUID
@@ -58,6 +65,34 @@ records.
 
 ---
 
+## Docstrings
+
+Every model class must have a docstring immediately after the class declaration.
+The docstring must describe what the entity represents and any non-obvious ownership
+or lifecycle rules. It must not restate the table name or list the columns.
+
+```python
+# wrong — no docstring
+class Address(SoftDeleteMixin, TimestampMixin, BaseModel):
+    __tablename__ = "identity_customer_addresses"
+
+
+# wrong — restates columns
+class Address(SoftDeleteMixin, TimestampMixin, BaseModel):
+    """Has id, customer_id, street, city, state, country, postal_code."""
+
+
+# correct
+class Address(SoftDeleteMixin, TimestampMixin, BaseModel):
+    """A physical address associated with a customer.
+
+    A customer may have multiple addresses. Only one address per customer
+    may be marked as the default.
+    """
+```
+
+---
+
 ## Columns
 
 Use SQLAlchemy 2.x typed annotations (`Mapped`, `mapped_column`) for all column
@@ -83,6 +118,27 @@ price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
 ```
 
 Never use string literals in type annotations — use the type directly.
+
+---
+
+## Defaults
+
+Use `default` for values generated in Python — UUIDs, booleans, string enums.
+Use `server_default` for database-native defaults — empty JSON objects, SQL expressions.
+
+```python
+# Python-generated default
+id: Mapped[uuid.UUID] = mapped_column(
+    UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+)
+status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+is_default: Mapped[bool] = mapped_column(nullable=False, default=False)
+
+# Database-native default
+attributes: Mapped[dict[str, Any]] = mapped_column(
+    JSONB, nullable=False, server_default="{}"
+)
+```
 
 ---
 
@@ -174,26 +230,78 @@ cancelled_at: Mapped[datetime] = ...
 ## Relationships
 
 Use `relationship()` for ORM-level navigation. Always set `back_populates` on both
-sides. Never use `backref`.
+sides. Never use `backref`, including for self-referential relationships.
+
+For self-referential relationships, declare both sides explicitly on the same class
+using `remote_side` to distinguish the many side from the one side.
 
 ```python
-from sqlalchemy.orm import relationship
+class Category(SoftDeleteMixin, TimestampMixin, BaseModel):
+    """A product category organized in a hierarchical tree structure."""
 
+    __tablename__ = "catalog_categories"
 
-class Customer(TimestampMixin, BaseModel):
-    __tablename__ = "identity_customers"
-
-    addresses: Mapped[list[Address]] = relationship(
-        "Address", back_populates="customer"
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("catalog_categories.id", name="fk_catalog_categories_parent_id"),
+        nullable=True,
     )
-    # All addresses registered by this customer.
+    # Identifier of the parent category, or null for root categories.
+
+    parent_category: Mapped[Category | None] = relationship(
+        "Category", back_populates="child_categories", remote_side="Category.id"
+    )
+    # The parent category, or null if this is a root category.
+
+    child_categories: Mapped[list[Category]] = relationship(
+        "Category", back_populates="parent_category"
+    )
+    # Direct child categories of this category.
+```
+
+Use `cascade="all, delete-orphan"` on the parent side of a composition — when the
+children cannot exist without the parent and must be deleted with it. Do not set
+`cascade` on reference relationships, where the related entity exists independently.
+
+```python
+# composition — cart owns its items
+class Cart(SoftDeleteMixin, TimestampMixin, BaseModel):
+    items: Mapped[list[CartItem]] = relationship(
+        "CartItem", back_populates="cart", cascade="all, delete-orphan"
+    )
+    # Items contained in this cart.
 
 
-class Address(TimestampMixin, BaseModel):
-    __tablename__ = "identity_customer_addresses"
+# reference — cart item points to a variant that exists independently
+class CartItem(TimestampMixin, BaseModel):
+    cart: Mapped[Cart] = relationship("Cart", back_populates="items")
+    # The cart this item belongs to.
+```
 
-    customer: Mapped[Customer] = relationship("Customer", back_populates="addresses")
-    # The customer this address belongs to.
+---
+
+## Cross-domain references
+
+When a model references an entity owned by another domain, store the ID as a plain
+column with no `ForeignKey(...)`. A database-level constraint would couple two
+domain data stores, violating service boundary isolation.
+
+Always add a comment explaining that the FK is intentionally absent and which domain
+owns the referenced entity.
+
+```python
+# wrong — FK constraint crosses a domain boundary
+variant_id: Mapped[uuid.UUID] = mapped_column(
+    UUID(as_uuid=True),
+    ForeignKey("catalog_variants.id", name="fk_cart_items_variant_id"),
+    nullable=False,
+)
+
+# correct — plain column, no DB-level constraint
+variant_id: Mapped[uuid.UUID] = mapped_column(
+    UUID(as_uuid=True),
+    nullable=False,
+)
+# Identifier of the product variant. No FK — variant is owned by the catalog domain.
 ```
 
 ---

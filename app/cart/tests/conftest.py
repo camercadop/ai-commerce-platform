@@ -5,12 +5,17 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.catalog.app import create_app
-from app.catalog.container import CatalogContainer
-from app.catalog.routes import _audit_dependency, _auth_dependency, _db_dependency
+from app.cart.app import create_app
+from app.cart.routes import (
+    _audit_dependency,
+    _auth_dependency,
+    _broker_dependency,
+    _db_dependency,
+)
 from app.shared.audit_log import NoOpAuditRepository
 from app.shared.auth import AuthSettings, TokenClaims
 from app.shared.db import BaseModel, DatabaseSettings, build_session_factory
+from app.shared.events import NoOpMessageBroker
 
 TEST_DATABASE_URL = os.environ["TEST_DATABASE_URL"]
 
@@ -27,7 +32,7 @@ def setup_schema() -> None:
 
 @pytest.fixture
 def app() -> FastAPI:
-    """Return a configured catalog app wired to the test database."""
+    """Return a configured cart app wired to the test database."""
     db_settings = DatabaseSettings(database_base_url=TEST_DATABASE_URL)
     auth_settings = AuthSettings(
         auth_jwt_public_key="test-key",
@@ -39,9 +44,6 @@ def app() -> FastAPI:
     session_factory = build_session_factory(TEST_DATABASE_URL)
     claims = TokenClaims(sub=str(ACTOR_ID), email="test@example.com")
 
-    container: CatalogContainer = fastapi_app.state.container
-    container.audit.override(NoOpAuditRepository())
-
     def override_db():
         with session_factory() as session:
             yield session
@@ -52,19 +54,19 @@ def app() -> FastAPI:
     fastapi_app.dependency_overrides[_db_dependency] = override_db
     fastapi_app.dependency_overrides[_auth_dependency] = override_auth
     fastapi_app.dependency_overrides[_audit_dependency] = NoOpAuditRepository
+    fastapi_app.dependency_overrides[_broker_dependency] = lambda: NoOpMessageBroker()
 
     return fastapi_app
 
 
 @pytest.fixture(autouse=True)
 def clean_tables(app: FastAPI) -> None:
-    """Truncate all catalog tables between tests to ensure isolation."""
+    """Truncate all cart tables between tests to ensure isolation."""
     session_factory = build_session_factory(TEST_DATABASE_URL)
     with session_factory() as session:
         session.execute(
             __import__("sqlalchemy").text(
-                "TRUNCATE catalog_category_attributes, catalog_variants, "
-                "catalog_products, catalog_categories, catalog_brands "
+                "TRUNCATE commerce_cart_items, commerce_cart_carts "
                 "RESTART IDENTITY CASCADE"
             )
         )
@@ -73,5 +75,5 @@ def clean_tables(app: FastAPI) -> None:
 
 @pytest.fixture
 def client(app: FastAPI) -> TestClient:
-    """Return a TestClient for the catalog app."""
+    """Return a TestClient for the cart app."""
     return TestClient(app)

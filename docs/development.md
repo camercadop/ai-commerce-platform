@@ -147,13 +147,11 @@ Tests require a running PostgreSQL instance. The test database (`commerce_test`)
 is created automatically on the first run.
 
 ```bash
-TEST_DATABASE_URL=postgresql://commerce:commerce@localhost:5432/commerce_test \
-  uv run pytest
+uv run pytest
 ```
 
 To run with coverage:
 
 ```bash
-TEST_DATABASE_URL=postgresql://commerce:commerce@localhost:5432/commerce_test \
-  uv run pytest --cov=app --cov-report=term-missing
+uv run pytest --cov=app --cov-report=term-missing
 ```

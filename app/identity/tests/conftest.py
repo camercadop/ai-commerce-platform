@@ -1,15 +1,21 @@
 import os
+import uuid
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.identity.app import create_app
-from app.identity.routes import _auth_dependency, _db_dependency
+from app.identity.container import IdentityContainer
+from app.identity.routes import _audit_dependency, _auth_dependency, _db_dependency
+from app.shared.audit_log import NoOpAuditRepository
 from app.shared.auth import AuthSettings, TokenClaims
 from app.shared.db import BaseModel, DatabaseSettings, build_session_factory
 
 TEST_DATABASE_URL = os.environ["TEST_DATABASE_URL"]
+
+ACTOR_ID = uuid.uuid4()
+ACTOR_SUB = "sub-test"
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -32,7 +38,10 @@ def app() -> FastAPI:
     fastapi_app = create_app(db_settings, auth_settings)
 
     session_factory = build_session_factory(TEST_DATABASE_URL)
-    claims = TokenClaims(sub="sub-test", email="test@example.com")
+    claims = TokenClaims(sub=ACTOR_SUB, email="test@example.com")
+
+    container: IdentityContainer = fastapi_app.state.container
+    container.audit.override(NoOpAuditRepository())
 
     def override_db():
         with session_factory() as session:
@@ -43,6 +52,7 @@ def app() -> FastAPI:
 
     fastapi_app.dependency_overrides[_db_dependency] = override_db
     fastapi_app.dependency_overrides[_auth_dependency] = override_auth
+    fastapi_app.dependency_overrides[_audit_dependency] = NoOpAuditRepository
 
     return fastapi_app
 

@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
 
 from app.identity.exceptions import (
     AddressNotFound,
@@ -15,7 +14,6 @@ from app.identity.exceptions import (
     CustomerNotFound,
     InvalidPreferenceKey,
 )
-from app.identity.models import CustomerPreference
 from app.identity.repository import AddressRepository, CustomerRepository
 from app.shared.audit_log import AuditPort, FieldChange, record_audit
 
@@ -39,15 +37,8 @@ class CustomerService:
     the caller (route handler) owns the transaction boundary.
     """
 
-    def __init__(self, session: Session, audit: AuditPort) -> None:
-        """Initialize the service with an active database session and audit port.
-
-        Args:
-            session: The SQLAlchemy session scoped to the current request.
-            audit: The audit port used to record state-changing operations.
-        """
-        self.repo = CustomerRepository(session)
-        self.session = session
+    def __init__(self, repo: CustomerRepository, audit: AuditPort) -> None:
+        self.repo = repo
         self._audit = audit
 
     def register(
@@ -168,17 +159,7 @@ class CustomerService:
         existing = {pref.key: pref for pref in customer.preferences}
         before = {k: existing[k].value if k in existing else None for k in preferences}
         for key, value in preferences.items():
-            if key in existing:
-                existing[key].value = value
-            else:
-                self.session.add(
-                    CustomerPreference(
-                        customer_id=customer_id,
-                        key=key,
-                        value=value,
-                    )
-                )
-        self.session.flush()
+            self.repo.upsert_preference(customer_id, key, value)
         record_audit(
             self._audit,
             actor_id=customer_id,
@@ -201,15 +182,14 @@ class AddressService:
     the caller (route handler) owns the transaction boundary.
     """
 
-    def __init__(self, session: Session, audit: AuditPort) -> None:
-        """Initialize the service with an active database session and audit port.
-
-        Args:
-            session: The SQLAlchemy session scoped to the current request.
-            audit: The audit port used to record state-changing operations.
-        """
-        self.repo = AddressRepository(session)
-        self.customer_repo = CustomerRepository(session)
+    def __init__(
+        self,
+        repo: AddressRepository,
+        customer_repo: CustomerRepository,
+        audit: AuditPort,
+    ) -> None:
+        self.repo = repo
+        self.customer_repo = customer_repo
         self._audit = audit
 
     def list_addresses(

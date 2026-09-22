@@ -4,7 +4,6 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
 
 from app.catalog.exceptions import (
     BrandAlreadyExists,
@@ -88,16 +87,9 @@ class CategoryService:
     """
 
     def __init__(
-        self, session: Session, audit: AuditPort, broker: MessageBroker
+        self, repo: CategoryRepository, audit: AuditPort, broker: MessageBroker
     ) -> None:
-        """Initialize with an active session, audit port, and message broker.
-
-        Args:
-            session: The SQLAlchemy session scoped to the current request.
-            audit: The audit port used to record state-changing operations.
-            broker: The message broker port used to publish domain events.
-        """
-        self.repo = CategoryRepository(session)
+        self.repo = repo
         self._audit = audit
         self._broker = broker
 
@@ -318,16 +310,9 @@ class BrandService:
     """
 
     def __init__(
-        self, session: Session, audit: AuditPort, broker: MessageBroker
+        self, repo: BrandRepository, audit: AuditPort, broker: MessageBroker
     ) -> None:
-        """Initialize with an active session, audit port, and message broker.
-
-        Args:
-            session: The SQLAlchemy session scoped to the current request.
-            audit: The audit port used to record state-changing operations.
-            broker: The message broker port used to publish domain events.
-        """
-        self.repo = BrandRepository(session)
+        self.repo = repo
         self._audit = audit
         self._broker = broker
 
@@ -490,18 +475,16 @@ class ProductService:
     """
 
     def __init__(
-        self, session: Session, audit: AuditPort, broker: MessageBroker
+        self,
+        repo: ProductRepository,
+        category_repo: CategoryRepository,
+        brand_repo: BrandRepository,
+        audit: AuditPort,
+        broker: MessageBroker,
     ) -> None:
-        """Initialize with an active session, audit port, and message broker.
-
-        Args:
-            session: The SQLAlchemy session scoped to the current request.
-            audit: The audit port used to record state-changing operations.
-            broker: The message broker port used to publish domain events.
-        """
-        self.repo = ProductRepository(session)
-        self._category_repo = CategoryRepository(session)
-        self._brand_repo = BrandRepository(session)
+        self.repo = repo
+        self._category_repo = category_repo
+        self._brand_repo = brand_repo
         self._audit = audit
         self._broker = broker
 
@@ -821,19 +804,18 @@ class VariantService:
     """
 
     def __init__(
-        self, session: Session, audit: AuditPort, broker: MessageBroker
+        self,
+        repo: VariantRepository,
+        product_repo: ProductRepository,
+        category_repo: CategoryRepository,
+        attr_repo: CategoryAttributeRepository,
+        audit: AuditPort,
+        broker: MessageBroker,
     ) -> None:
-        """Initialize with an active session, audit port, and message broker.
-
-        Args:
-            session: The SQLAlchemy session scoped to the current request.
-            audit: The audit port used to record state-changing operations.
-            broker: The message broker port used to publish domain events.
-        """
-        self.repo = VariantRepository(session)
-        self._product_repo = ProductRepository(session)
-        self._category_repo = CategoryRepository(session)
-        self._attr_repo = CategoryAttributeRepository(session)
+        self.repo = repo
+        self._product_repo = product_repo
+        self._category_repo = category_repo
+        self._attr_repo = attr_repo
         self._audit = audit
         self._broker = broker
 
@@ -1069,17 +1051,14 @@ class CategoryAttributeService:
     """
 
     def __init__(
-        self, session: Session, audit: AuditPort, broker: MessageBroker
+        self,
+        repo: CategoryAttributeRepository,
+        category_repo: CategoryRepository,
+        audit: AuditPort,
+        broker: MessageBroker,
     ) -> None:
-        """Initialize with an active session, audit port, and message broker.
-
-        Args:
-            session: The SQLAlchemy session scoped to the current request.
-            audit: The audit port used to record state-changing operations.
-            broker: The message broker port used to publish domain events.
-        """
-        self.repo = CategoryAttributeRepository(session)
-        self._category_repo = CategoryRepository(session)
+        self.repo = repo
+        self._category_repo = category_repo
         self._audit = audit
         self._broker = broker
 

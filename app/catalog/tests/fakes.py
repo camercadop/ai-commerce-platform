@@ -12,74 +12,74 @@ from app.shared.events import EventEnvelope, MessageBroker
 def make_category(**kwargs: Any) -> Category:
     """Build a Category instance with sensible defaults for testing."""
     obj = Category()
-    obj.id = kwargs.get("id", uuid.uuid4())  # type: ignore[assignment]
-    obj.name = kwargs.get("name", "Electronics")  # type: ignore[assignment]
-    obj.description = kwargs.get("description", None)  # type: ignore[assignment]
-    obj.parent_id = kwargs.get("parent_id", None)  # type: ignore[assignment]
-    obj.deleted_at = kwargs.get("deleted_at", None)  # type: ignore[assignment]
-    obj.created_at = kwargs.get("created_at", datetime.now(UTC))  # type: ignore[assignment]
-    obj.updated_at = kwargs.get("updated_at", datetime.now(UTC))  # type: ignore[assignment]
-    obj.attributes = kwargs.get("attributes", [])  # type: ignore[assignment]
+    obj.id = kwargs.get("id", uuid.uuid4())
+    obj.name = kwargs.get("name", "Electronics")
+    obj.description = kwargs.get("description", None)
+    obj.parent_id = kwargs.get("parent_id", None)
+    obj.deleted_at = kwargs.get("deleted_at", None)
+    obj.created_at = kwargs.get("created_at", datetime.now(UTC))
+    obj.updated_at = kwargs.get("updated_at", datetime.now(UTC))
+    obj.attributes = kwargs.get("attributes", [])
     return obj
 
 
 def make_brand(**kwargs: Any) -> Brand:
     """Build a Brand instance with sensible defaults for testing."""
     obj = Brand()
-    obj.id = kwargs.get("id", uuid.uuid4())  # type: ignore[assignment]
-    obj.name = kwargs.get("name", "Acme")  # type: ignore[assignment]
-    obj.website = kwargs.get("website", None)  # type: ignore[assignment]
-    obj.contact_email = kwargs.get("contact_email", None)  # type: ignore[assignment]
-    obj.description = kwargs.get("description", None)  # type: ignore[assignment]
-    obj.deleted_at = kwargs.get("deleted_at", None)  # type: ignore[assignment]
-    obj.created_at = kwargs.get("created_at", datetime.now(UTC))  # type: ignore[assignment]
-    obj.updated_at = kwargs.get("updated_at", datetime.now(UTC))  # type: ignore[assignment]
+    obj.id = kwargs.get("id", uuid.uuid4())
+    obj.name = kwargs.get("name", "Acme")
+    obj.website = kwargs.get("website", None)
+    obj.contact_email = kwargs.get("contact_email", None)
+    obj.description = kwargs.get("description", None)
+    obj.deleted_at = kwargs.get("deleted_at", None)
+    obj.created_at = kwargs.get("created_at", datetime.now(UTC))
+    obj.updated_at = kwargs.get("updated_at", datetime.now(UTC))
     return obj
 
 
 def make_product(**kwargs: Any) -> Product:
     """Build a Product instance with sensible defaults for testing."""
     obj = Product()
-    obj.id = kwargs.get("id", uuid.uuid4())  # type: ignore[assignment]
-    obj.sku = kwargs.get("sku", "SKU-001")  # type: ignore[assignment]
-    obj.name = kwargs.get("name", "Widget")  # type: ignore[assignment]
-    obj.description = kwargs.get("description", None)  # type: ignore[assignment]
-    obj.category_id = kwargs.get("category_id", None)  # type: ignore[assignment]
-    obj.brand_id = kwargs.get("brand_id", None)  # type: ignore[assignment]
-    obj.base_price = kwargs.get("base_price", "9.99")  # type: ignore[assignment]
-    obj.status = kwargs.get("status", "draft")  # type: ignore[assignment]
-    obj.specs = kwargs.get("specs", None)  # type: ignore[assignment]
-    obj.deleted_at = kwargs.get("deleted_at", None)  # type: ignore[assignment]
-    obj.created_at = kwargs.get("created_at", datetime.now(UTC))  # type: ignore[assignment]
-    obj.updated_at = kwargs.get("updated_at", datetime.now(UTC))  # type: ignore[assignment]
+    obj.id = kwargs.get("id", uuid.uuid4())
+    obj.sku = kwargs.get("sku", "SKU-001")
+    obj.name = kwargs.get("name", "Widget")
+    obj.description = kwargs.get("description", None)
+    obj.category_id = kwargs.get("category_id", None)
+    obj.brand_id = kwargs.get("brand_id", None)
+    obj.base_price = kwargs.get("base_price", "9.99")
+    obj.status = kwargs.get("status", "draft")
+    obj.specs = kwargs.get("specs", None)
+    obj.deleted_at = kwargs.get("deleted_at", None)
+    obj.created_at = kwargs.get("created_at", datetime.now(UTC))
+    obj.updated_at = kwargs.get("updated_at", datetime.now(UTC))
     return obj
 
 
 def make_variant(**kwargs: Any) -> Variant:
     """Build a Variant instance with sensible defaults for testing."""
     obj = Variant()
-    obj.id = kwargs.get("id", uuid.uuid4())  # type: ignore[assignment]
-    obj.product_id = kwargs.get("product_id", uuid.uuid4())  # type: ignore[assignment]
-    obj.sku = kwargs.get("sku", "VAR-001")  # type: ignore[assignment]
-    obj.price = kwargs.get("price", "9.99")  # type: ignore[assignment]
-    obj.attributes = kwargs.get("attributes", {})  # type: ignore[assignment]
-    obj.deleted_at = kwargs.get("deleted_at", None)  # type: ignore[assignment]
-    obj.created_at = kwargs.get("created_at", datetime.now(UTC))  # type: ignore[assignment]
-    obj.updated_at = kwargs.get("updated_at", datetime.now(UTC))  # type: ignore[assignment]
+    obj.id = kwargs.get("id", uuid.uuid4())
+    obj.product_id = kwargs.get("product_id", uuid.uuid4())
+    obj.sku = kwargs.get("sku", "VAR-001")
+    obj.price = kwargs.get("price", "9.99")
+    obj.attributes = kwargs.get("attributes", {})
+    obj.deleted_at = kwargs.get("deleted_at", None)
+    obj.created_at = kwargs.get("created_at", datetime.now(UTC))
+    obj.updated_at = kwargs.get("updated_at", datetime.now(UTC))
     return obj
 
 
 def make_category_attribute(**kwargs: Any) -> CategoryAttribute:
     """Build a CategoryAttribute instance with sensible defaults for testing."""
     obj = CategoryAttribute()
-    obj.id = kwargs.get("id", uuid.uuid4())  # type: ignore[assignment]
-    obj.category_id = kwargs.get("category_id", uuid.uuid4())  # type: ignore[assignment]
-    obj.key = kwargs.get("key", "color")  # type: ignore[assignment]
-    obj.value_type = kwargs.get("value_type", "string")  # type: ignore[assignment]
-    obj.required = kwargs.get("required", False)  # type: ignore[assignment]
-    obj.deleted_at = kwargs.get("deleted_at", None)  # type: ignore[assignment]
-    obj.created_at = kwargs.get("created_at", datetime.now(UTC))  # type: ignore[assignment]
-    obj.updated_at = kwargs.get("updated_at", datetime.now(UTC))  # type: ignore[assignment]
+    obj.id = kwargs.get("id", uuid.uuid4())
+    obj.category_id = kwargs.get("category_id", uuid.uuid4())
+    obj.key = kwargs.get("key", "color")
+    obj.value_type = kwargs.get("value_type", "string")
+    obj.required = kwargs.get("required", False)
+    obj.deleted_at = kwargs.get("deleted_at", None)
+    obj.created_at = kwargs.get("created_at", datetime.now(UTC))
+    obj.updated_at = kwargs.get("updated_at", datetime.now(UTC))
     return obj
 
 
@@ -300,7 +300,7 @@ class RaisingMessageBroker(MessageBroker):
     def publish(self, topic: str, envelope: EventEnvelope) -> None:
         raise RuntimeError("broker unavailable")
 
-    def subscribe(self, topic: str, handler: Any) -> None:  # type: ignore[override]
+    def subscribe(self, topic: str, handler: Any) -> None:
         pass
 
 
@@ -310,10 +310,10 @@ class _IntegrityErrorOnWrite:
     def _raise(self) -> None:
         raise IntegrityError(None, None, Exception("unique constraint"))
 
-    def create(self, **kwargs: Any) -> Any:  # type: ignore[override]
+    def create(self, **kwargs: Any) -> Any:
         self._raise()
 
-    def update(self, record: Any, data: Any) -> Any:  # type: ignore[override]
+    def update(self, record: Any, data: Any) -> Any:
         self._raise()
 
 

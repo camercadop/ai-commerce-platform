@@ -81,6 +81,7 @@ class Address(SoftDeleteMixin, TimestampMixin, BaseModel):
     # Unique identifier for this address.
 
     customer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey(
             "identity_customers.id", name="fk_identity_customer_addresses_customer_id"
         ),
@@ -140,6 +141,7 @@ class CustomerPreference(TimestampMixin, BaseModel):
     # Unique identifier for this preference entry.
 
     customer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey(
             "identity_customers.id",
             name="fk_identity_customer_preferences_customer_id",

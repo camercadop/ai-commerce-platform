@@ -3,7 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import select, update
 
-from app.identity.models import Address, Customer
+from app.identity.models import Address, Customer, CustomerPreference
 from app.shared.db import BaseRepository
 
 
@@ -30,6 +30,26 @@ class CustomerRepository(BaseRepository[Customer]):
             .where(Customer.deleted_at.is_(None))
         )
         return self.session.execute(stmt).scalar_one_or_none()
+
+    def upsert_preference(self, customer_id: uuid.UUID, key: str, value: str) -> None:
+        """Insert or update a single preference for the given customer.
+
+        Args:
+            customer_id: The UUID of the owning customer.
+            key: The preference key.
+            value: The preference value.
+        """
+        customer = self.get_by_id(customer_id)
+        if customer is None:
+            return
+        existing = next((p for p in customer.preferences if p.key == key), None)
+        if existing is not None:
+            existing.value = value
+        else:
+            self.session.add(
+                CustomerPreference(customer_id=customer_id, key=key, value=value)
+            )
+        self.session.flush()
 
 
 class AddressRepository(BaseRepository[Address]):

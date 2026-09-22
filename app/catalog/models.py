@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
@@ -67,10 +68,13 @@ class Category(SoftDeleteMixin, TimestampMixin, BaseModel):
     products: Mapped[list[Product]] = relationship("Product", back_populates="category")
     # Products in this category.
 
+    parent_category: Mapped[Category | None] = relationship(
+        "Category", back_populates="child_categories", remote_side="Category.id"
+    )
+    # The parent category, or null if this is a root category.
+
     child_categories: Mapped[list[Category]] = relationship(
-        "Category",
-        backref="parent_category",
-        remote_side=[id],
+        "Category", back_populates="parent_category"
     )
     # Direct child categories of this category.
 
@@ -162,7 +166,7 @@ class Product(SoftDeleteMixin, TimestampMixin, BaseModel):
     )
     # Identifier of the brand this product belongs to.
 
-    base_price: Mapped[object] = mapped_column(Numeric(10, 2), nullable=False)
+    base_price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     # Listed price for this product in its base currency.
 
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
@@ -214,7 +218,7 @@ class Variant(SoftDeleteMixin, TimestampMixin, BaseModel):
     sku: Mapped[str] = mapped_column(String(255), nullable=False)
     # Stock-keeping unit, unique identifier for this variant.
 
-    price: Mapped[object] = mapped_column(Numeric(10, 2), nullable=False)
+    price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     # Listed price for this variant in the product's currency.
 
     attributes: Mapped[dict[str, Any]] = mapped_column(

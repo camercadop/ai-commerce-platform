@@ -7,18 +7,13 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.catalog.exceptions import (
-    BrandAlreadyExists,
-    BrandNotFound,
-    CategoryAlreadyExists,
-    CategoryAttributeAlreadyExists,
-    CategoryAttributeNotFound,
-    CategoryNotFound,
-    InvalidVariantAttributes,
-    ProductAlreadyExists,
-    ProductNotFound,
-    VariantAlreadyExists,
-    VariantNotFound,
+from app.catalog.exceptions import InvalidVariantAttributes
+from app.catalog.repository import (
+    BrandRepository,
+    CategoryAttributeRepository,
+    CategoryRepository,
+    ProductRepository,
+    VariantRepository,
 )
 from app.catalog.schemas import (
     BrandResponse,
@@ -46,7 +41,6 @@ from app.catalog.service import (
     VariantService,
 )
 from app.shared.api import (
-    CRUDRouter,
     RequestContext,
     decode_cursor,
     error_response,
@@ -56,6 +50,7 @@ from app.shared.api.schemas import PaginatedResponse
 from app.shared.audit_log import AuditPort
 from app.shared.auth import TokenClaims
 from app.shared.events import MessageBroker
+from app.shared.exceptions import ResourceAlreadyExists, ResourceNotFound
 
 logger = logging.getLogger(__name__)
 
@@ -85,8 +80,8 @@ def _auth_dependency() -> TokenClaims:
 def _audit_dependency() -> AuditPort:
     """Sentinel dependency overridden at application startup via dependency_overrides.
 
-    Never called directly. app.py replaces this with a MongoAuditRepository
-    instance built from MongoSettings.
+    Never called directly. app.py replaces this with the resolved singleton from
+    CatalogContainer.
     """
     raise NotImplementedError  # pragma: no cover
 
@@ -94,8 +89,8 @@ def _audit_dependency() -> AuditPort:
 def _broker_dependency() -> MessageBroker:
     """Sentinel dependency overridden at application startup via dependency_overrides.
 
-    Never called directly. app.py replaces this with a concrete MessageBroker
-    implementation built from broker settings.
+    Never called directly. app.py replaces this with the resolved singleton from
+    CatalogContainer.
     """
     raise NotImplementedError  # pragma: no cover
 
@@ -174,61 +169,166 @@ def _to_attribute(obj: object) -> CategoryAttributeResponse:
 
 
 # ---------------------------------------------------------------------------
-# Category router
+# Service dependency factories
 # ---------------------------------------------------------------------------
 
 
-def build_category_router(audit: AuditPort, broker: MessageBroker) -> APIRouter:
-    """Build the category CRUD router.
+def _get_category_service(
+    db: DbDep,
+    audit: AuditDep,
+    broker: BrokerDep,
+) -> CategoryService:
+    """FastAPI dependency that builds a CategoryService for the current request."""
+    return CategoryService(CategoryRepository(db), audit, broker)
 
-    Args:
-        audit: The audit port to inject into service instances.
-        broker: The message broker port to inject into service instances.
-    """
-    return CRUDRouter(
-        prefix=CATEGORIES_PREFIX,
-        response_model=CategoryResponse,
-        to_response=_to_category,
-        create_schema=CreateCategoryRequest,
-        update_schema=UpdateCategoryRequest,
-        get_db_dep=_db_dependency,
-        create_fn=lambda body, db, context: CategoryService(db, audit, broker).create(
-            actor_id=uuid.UUID(int=0),
-            name=body.name,
-            description=body.description,
-            parent_id=body.parent_id,
-        ),
-        get_fn=lambda resource_id, db, context: CategoryService(db, audit, broker).get(
-            resource_id
-        ),
-        update_fn=lambda resource_id, data, db, context: CategoryService(
-            db, audit, broker
-        ).update(uuid.UUID(int=0), resource_id, data),
-        delete_fn=lambda resource_id, db, context: CategoryService(
-            db, audit, broker
-        ).delete(uuid.UUID(int=0), resource_id),
+
+def _get_brand_service(
+    db: DbDep,
+    audit: AuditDep,
+    broker: BrokerDep,
+) -> BrandService:
+    """FastAPI dependency that builds a BrandService for the current request."""
+    return BrandService(BrandRepository(db), audit, broker)
+
+
+def _get_product_service(
+    db: DbDep,
+    audit: AuditDep,
+    broker: BrokerDep,
+) -> ProductService:
+    """FastAPI dependency that builds a ProductService for the current request."""
+    return ProductService(
+        ProductRepository(db),
+        CategoryRepository(db),
+        BrandRepository(db),
+        audit,
+        broker,
     )
 
 
-category_sub_router = APIRouter()
+def _get_variant_service(
+    db: DbDep,
+    audit: AuditDep,
+    broker: BrokerDep,
+) -> VariantService:
+    """FastAPI dependency that builds a VariantService for the current request."""
+    return VariantService(
+        VariantRepository(db),
+        ProductRepository(db),
+        CategoryRepository(db),
+        CategoryAttributeRepository(db),
+        audit,
+        broker,
+    )
 
 
-@category_sub_router.get(
+def _get_attribute_service(
+    db: DbDep,
+    audit: AuditDep,
+    broker: BrokerDep,
+) -> CategoryAttributeService:
+    """FastAPI dependency that builds a CategoryAttributeService for the current request."""  # noqa: E501
+    return CategoryAttributeService(
+        CategoryAttributeRepository(db),
+        CategoryRepository(db),
+        audit,
+        broker,
+    )
+
+
+CategoryServiceDep = Annotated[CategoryService, Depends(_get_category_service)]
+BrandServiceDep = Annotated[BrandService, Depends(_get_brand_service)]
+ProductServiceDep = Annotated[ProductService, Depends(_get_product_service)]
+VariantServiceDep = Annotated[VariantService, Depends(_get_variant_service)]
+AttributeServiceDep = Annotated[
+    CategoryAttributeService, Depends(_get_attribute_service)
+]
+
+
+# ---------------------------------------------------------------------------
+# Category routes
+# ---------------------------------------------------------------------------
+
+category_router = APIRouter()
+
+
+@category_router.post(
+    CATEGORIES_PREFIX, response_model=CategoryResponse, status_code=201
+)
+def create_category(
+    body: CreateCategoryRequest,
+    claims: AuthDep,
+    db: DbDep,
+    service: CategoryServiceDep,
+) -> CategoryResponse:
+    """Create a new category."""
+    result = _to_category(
+        service.create(
+            actor_id=claims.actor_id(),
+            name=body.name,
+            description=body.description,
+            parent_id=body.parent_id,
+        )
+    )
+    db.commit()
+    return result
+
+
+@category_router.get(
+    f"{CATEGORIES_PREFIX}/{{category_id}}", response_model=CategoryResponse
+)
+def get_category(
+    category_id: uuid.UUID,
+    service: CategoryServiceDep,
+) -> CategoryResponse:
+    """Return the category with the given id."""
+    return _to_category(service.get(category_id))
+
+
+@category_router.patch(
+    f"{CATEGORIES_PREFIX}/{{category_id}}", response_model=CategoryResponse
+)
+def update_category(
+    category_id: uuid.UUID,
+    body: UpdateCategoryRequest,
+    claims: AuthDep,
+    db: DbDep,
+    service: CategoryServiceDep,
+) -> CategoryResponse:
+    """Partially update the category with the given id."""
+    result = _to_category(
+        service.update(
+            claims.actor_id(), category_id, body.model_dump(exclude_unset=True)
+        )
+    )
+    db.commit()
+    return result
+
+
+@category_router.delete(f"{CATEGORIES_PREFIX}/{{category_id}}", status_code=204)
+def delete_category(
+    category_id: uuid.UUID,
+    claims: AuthDep,
+    db: DbDep,
+    service: CategoryServiceDep,
+) -> None:
+    """Delete the category with the given id."""
+    service.delete(claims.actor_id(), category_id)
+    db.commit()
+
+
+@category_router.get(
     f"{CATEGORIES_PREFIX}/{{category_id}}/children",
     response_model=PaginatedResponse[CategoryResponse],
 )
 def list_category_children(
     category_id: uuid.UUID,
-    db: DbDep,
-    audit: AuditDep,
-    broker: BrokerDep,
+    service: CategoryServiceDep,
     cursor: str | None = None,
 ) -> PaginatedResponse[CategoryResponse]:
     """Return a paginated page of direct child categories."""
     decoded = decode_cursor(cursor) if cursor else None
-    rows = CategoryService(db, audit, broker).list_by_parent(
-        category_id, limit=PAGE_SIZE + 1, cursor=decoded
-    )
+    rows = service.list_by_parent(category_id, limit=PAGE_SIZE + 1, cursor=decoded)
     return paginate(
         rows=rows,
         page_size=PAGE_SIZE,
@@ -237,21 +337,17 @@ def list_category_children(
     )
 
 
-@category_sub_router.get(
+@category_router.get(
     CATEGORIES_PREFIX,
     response_model=PaginatedResponse[CategoryResponse],
 )
 def list_root_categories(
-    db: DbDep,
-    audit: AuditDep,
-    broker: BrokerDep,
+    service: CategoryServiceDep,
     cursor: str | None = None,
 ) -> PaginatedResponse[CategoryResponse]:
     """Return a paginated page of root categories."""
     decoded = decode_cursor(cursor) if cursor else None
-    rows = CategoryService(db, audit, broker).list_root(
-        limit=PAGE_SIZE + 1, cursor=decoded
-    )
+    rows = service.list_root(limit=PAGE_SIZE + 1, cursor=decoded)
     return paginate(
         rows=rows,
         page_size=PAGE_SIZE,
@@ -261,101 +357,144 @@ def list_root_categories(
 
 
 # ---------------------------------------------------------------------------
-# Brand router
+# Brand routes
 # ---------------------------------------------------------------------------
 
+brand_router = APIRouter()
 
-def build_brand_router(audit: AuditPort, broker: MessageBroker) -> APIRouter:
-    """Build the brand CRUD router.
 
-    Args:
-        audit: The audit port to inject into service instances.
-        broker: The message broker port to inject into service instances.
-    """
-    return CRUDRouter(
-        prefix=BRANDS_PREFIX,
-        response_model=BrandResponse,
-        to_response=_to_brand,
-        create_schema=CreateBrandRequest,
-        update_schema=UpdateBrandRequest,
-        get_db_dep=_db_dependency,
-        create_fn=lambda body, db, context: BrandService(db, audit, broker).create(
-            actor_id=uuid.UUID(int=0),
-            **body.model_dump(),
-        ),
-        get_fn=lambda resource_id, db, context: BrandService(db, audit, broker).get(
-            resource_id
-        ),
-        update_fn=lambda resource_id, data, db, context: BrandService(
-            db, audit, broker
-        ).update(uuid.UUID(int=0), resource_id, data),
-        delete_fn=lambda resource_id, db, context: BrandService(
-            db, audit, broker
-        ).delete(uuid.UUID(int=0), resource_id),
+@brand_router.post(BRANDS_PREFIX, response_model=BrandResponse, status_code=201)
+def create_brand(
+    body: CreateBrandRequest,
+    claims: AuthDep,
+    db: DbDep,
+    service: BrandServiceDep,
+) -> BrandResponse:
+    """Create a new brand."""
+    result = _to_brand(service.create(actor_id=claims.actor_id(), **body.model_dump()))
+    db.commit()
+    return result
+
+
+@brand_router.get(f"{BRANDS_PREFIX}/{{brand_id}}", response_model=BrandResponse)
+def get_brand(
+    brand_id: uuid.UUID,
+    service: BrandServiceDep,
+) -> BrandResponse:
+    """Return the brand with the given id."""
+    return _to_brand(service.get(brand_id))
+
+
+@brand_router.patch(f"{BRANDS_PREFIX}/{{brand_id}}", response_model=BrandResponse)
+def update_brand(
+    brand_id: uuid.UUID,
+    body: UpdateBrandRequest,
+    claims: AuthDep,
+    db: DbDep,
+    service: BrandServiceDep,
+) -> BrandResponse:
+    """Partially update the brand with the given id."""
+    result = _to_brand(
+        service.update(claims.actor_id(), brand_id, body.model_dump(exclude_unset=True))
     )
+    db.commit()
+    return result
+
+
+@brand_router.delete(f"{BRANDS_PREFIX}/{{brand_id}}", status_code=204)
+def delete_brand(
+    brand_id: uuid.UUID,
+    claims: AuthDep,
+    db: DbDep,
+    service: BrandServiceDep,
+) -> None:
+    """Delete the brand with the given id."""
+    service.delete(claims.actor_id(), brand_id)
+    db.commit()
 
 
 # ---------------------------------------------------------------------------
-# Product router
+# Product routes
 # ---------------------------------------------------------------------------
 
+product_router = APIRouter()
 
-def build_product_router(audit: AuditPort, broker: MessageBroker) -> APIRouter:
-    """Build the product CRUD router.
 
-    Args:
-        audit: The audit port to inject into service instances.
-        broker: The message broker port to inject into service instances.
-    """
-    return CRUDRouter(
-        prefix=PRODUCTS_PREFIX,
-        response_model=ProductResponse,
-        to_response=_to_product,
-        create_schema=CreateProductRequest,
-        update_schema=UpdateProductRequest,
-        get_db_dep=_db_dependency,
-        create_fn=lambda body, db, context: ProductService(db, audit, broker).create(
-            actor_id=uuid.UUID(int=0),
+@product_router.post(PRODUCTS_PREFIX, response_model=ProductResponse, status_code=201)
+def create_product(
+    body: CreateProductRequest,
+    claims: AuthDep,
+    db: DbDep,
+    service: ProductServiceDep,
+) -> ProductResponse:
+    """Create a new product."""
+    excluded = ("sku", "name", "base_price")
+    result = _to_product(
+        service.create(
+            actor_id=claims.actor_id(),
             sku=body.sku,
             name=body.name,
             base_price=body.base_price,
-            **{
-                k: v
-                for k, v in body.model_dump().items()
-                if k not in ("sku", "name", "base_price")
-            },
-        ),
-        get_fn=lambda resource_id, db, context: ProductService(db, audit, broker).get(
-            resource_id
-        ),
-        update_fn=lambda resource_id, data, db, context: ProductService(
-            db, audit, broker
-        ).update(uuid.UUID(int=0), resource_id, data),
-        delete_fn=lambda resource_id, db, context: ProductService(
-            db, audit, broker
-        ).delete(uuid.UUID(int=0), resource_id),
+            **{k: v for k, v in body.model_dump().items() if k not in excluded},
+        )
     )
+    db.commit()
+    return result
 
 
-product_sub_router = APIRouter()
+@product_router.get(f"{PRODUCTS_PREFIX}/{{product_id}}", response_model=ProductResponse)
+def get_product(
+    product_id: uuid.UUID,
+    service: ProductServiceDep,
+) -> ProductResponse:
+    """Return the product with the given id."""
+    return _to_product(service.get(product_id))
 
 
-@product_sub_router.get(
+@product_router.patch(
+    f"{PRODUCTS_PREFIX}/{{product_id}}", response_model=ProductResponse
+)
+def update_product(
+    product_id: uuid.UUID,
+    body: UpdateProductRequest,
+    claims: AuthDep,
+    db: DbDep,
+    service: ProductServiceDep,
+) -> ProductResponse:
+    """Partially update the product with the given id."""
+    result = _to_product(
+        service.update(
+            claims.actor_id(), product_id, body.model_dump(exclude_unset=True)
+        )
+    )
+    db.commit()
+    return result
+
+
+@product_router.delete(f"{PRODUCTS_PREFIX}/{{product_id}}", status_code=204)
+def delete_product(
+    product_id: uuid.UUID,
+    claims: AuthDep,
+    db: DbDep,
+    service: ProductServiceDep,
+) -> None:
+    """Delete the product with the given id."""
+    service.delete(claims.actor_id(), product_id)
+    db.commit()
+
+
+@product_router.get(
     f"{PRODUCTS_PREFIX}/{{product_id}}/variants",
     response_model=PaginatedResponse[VariantResponse],
 )
 def list_product_variants(
     product_id: uuid.UUID,
-    db: DbDep,
-    audit: AuditDep,
-    broker: BrokerDep,
+    service: VariantServiceDep,
     cursor: str | None = None,
 ) -> PaginatedResponse[VariantResponse]:
     """Return a paginated page of active variants for the given product."""
     decoded = decode_cursor(cursor) if cursor else None
-    rows = VariantService(db, audit, broker).list_by_product(
-        product_id, limit=PAGE_SIZE + 1, cursor=decoded
-    )
+    rows = service.list_by_product(product_id, limit=PAGE_SIZE + 1, cursor=decoded)
     return paginate(
         rows=rows,
         page_size=PAGE_SIZE,
@@ -364,22 +503,18 @@ def list_product_variants(
     )
 
 
-@product_sub_router.get(
+@product_router.get(
     f"{BRANDS_PREFIX}/{{brand_id}}/products",
     response_model=PaginatedResponse[ProductResponse],
 )
 def list_brand_products(
     brand_id: uuid.UUID,
-    db: DbDep,
-    audit: AuditDep,
-    broker: BrokerDep,
+    service: ProductServiceDep,
     cursor: str | None = None,
 ) -> PaginatedResponse[ProductResponse]:
     """Return a paginated page of active products for the given brand."""
     decoded = decode_cursor(cursor) if cursor else None
-    rows = ProductService(db, audit, broker).list_by_brand(
-        brand_id, limit=PAGE_SIZE + 1, cursor=decoded
-    )
+    rows = service.list_by_brand(brand_id, limit=PAGE_SIZE + 1, cursor=decoded)
     return paginate(
         rows=rows,
         page_size=PAGE_SIZE,
@@ -388,22 +523,18 @@ def list_brand_products(
     )
 
 
-@product_sub_router.get(
+@product_router.get(
     f"{CATEGORIES_PREFIX}/{{category_id}}/products",
     response_model=PaginatedResponse[ProductResponse],
 )
 def list_category_products(
     category_id: uuid.UUID,
-    db: DbDep,
-    audit: AuditDep,
-    broker: BrokerDep,
+    service: ProductServiceDep,
     cursor: str | None = None,
 ) -> PaginatedResponse[ProductResponse]:
     """Return a paginated page of active products in the given category."""
     decoded = decode_cursor(cursor) if cursor else None
-    rows = ProductService(db, audit, broker).list_by_category(
-        category_id, limit=PAGE_SIZE + 1, cursor=decoded
-    )
+    rows = service.list_by_category(category_id, limit=PAGE_SIZE + 1, cursor=decoded)
     return paginate(
         rows=rows,
         page_size=PAGE_SIZE,
@@ -413,114 +544,183 @@ def list_category_products(
 
 
 # ---------------------------------------------------------------------------
-# Variant router
+# Variant routes
 # ---------------------------------------------------------------------------
 
+variant_router = APIRouter()
 
-def build_variant_router(audit: AuditPort, broker: MessageBroker) -> APIRouter:
-    """Build the variant CRUD router nested under products.
 
-    The POST route lives at /products/{product_id}/variants. The product_id
-    path param is extracted from context['request'] and coerced via
-    VariantRequestContext.
-
-    Args:
-        audit: The audit port to inject into service instances.
-        broker: The message broker port to inject into service instances.
-    """
-    return CRUDRouter(
-        prefix=f"{PRODUCTS_PREFIX}/{{product_id}}/variants",
-        response_model=VariantResponse,
-        to_response=_to_variant,
-        create_schema=CreateVariantRequest,
-        update_schema=UpdateVariantRequest,
-        get_db_dep=_db_dependency,
-        create_fn=lambda body, db, context: VariantService(db, audit, broker).create(
-            actor_id=uuid.UUID(int=0),
-            product_id=VariantRequestContext.model_validate(
-                {"request": context["request"]}
-            ).path_params.product_id,
+@variant_router.post(
+    f"{PRODUCTS_PREFIX}/{{product_id}}/variants",
+    response_model=VariantResponse,
+    status_code=201,
+)
+def create_variant(
+    request: Request,
+    body: CreateVariantRequest,
+    claims: AuthDep,
+    db: DbDep,
+    service: VariantServiceDep,
+) -> VariantResponse:
+    """Create a new variant for the given product."""
+    product_id = VariantRequestContext.model_validate(
+        {"request": request}
+    ).path_params.product_id
+    result = _to_variant(
+        service.create(
+            actor_id=claims.actor_id(),
+            product_id=product_id,
             sku=body.sku,
             price=body.price,
             attributes=body.attributes,
-        ),
-        get_fn=lambda resource_id, db, context: VariantService(db, audit, broker).get(
-            resource_id
-        ),
-        update_fn=lambda resource_id, data, db, context: VariantService(
-            db, audit, broker
-        ).update(uuid.UUID(int=0), resource_id, data),
-        delete_fn=lambda resource_id, db, context: VariantService(
-            db, audit, broker
-        ).delete(uuid.UUID(int=0), resource_id),
+        )
     )
+    db.commit()
+    return result
+
+
+@variant_router.get(
+    f"{PRODUCTS_PREFIX}/{{product_id}}/variants/{{variant_id}}",
+    response_model=VariantResponse,
+)
+def get_variant(
+    variant_id: uuid.UUID,
+    service: VariantServiceDep,
+) -> VariantResponse:
+    """Return the variant with the given id."""
+    return _to_variant(service.get(variant_id))
+
+
+@variant_router.patch(
+    f"{PRODUCTS_PREFIX}/{{product_id}}/variants/{{variant_id}}",
+    response_model=VariantResponse,
+)
+def update_variant(
+    variant_id: uuid.UUID,
+    body: UpdateVariantRequest,
+    claims: AuthDep,
+    db: DbDep,
+    service: VariantServiceDep,
+) -> VariantResponse:
+    """Partially update the variant with the given id."""
+    result = _to_variant(
+        service.update(
+            claims.actor_id(), variant_id, body.model_dump(exclude_unset=True)
+        )
+    )
+    db.commit()
+    return result
+
+
+@variant_router.delete(
+    f"{PRODUCTS_PREFIX}/{{product_id}}/variants/{{variant_id}}", status_code=204
+)
+def delete_variant(
+    variant_id: uuid.UUID,
+    claims: AuthDep,
+    db: DbDep,
+    service: VariantServiceDep,
+) -> None:
+    """Delete the variant with the given id."""
+    service.delete(claims.actor_id(), variant_id)
+    db.commit()
 
 
 # ---------------------------------------------------------------------------
-# CategoryAttribute router
+# CategoryAttribute routes
 # ---------------------------------------------------------------------------
 
+attribute_router = APIRouter()
 
-def build_attribute_router(audit: AuditPort, broker: MessageBroker) -> APIRouter:
-    """Build the category attribute CRUD router nested under categories.
 
-    The POST route lives at /categories/{category_id}/attributes. The
-    category_id path param is extracted from context['request'] and coerced
-    via AttributeRequestContext.
-
-    Args:
-        audit: The audit port to inject into service instances.
-        broker: The message broker port to inject into service instances.
-    """
-    return CRUDRouter(
-        prefix=f"{CATEGORIES_PREFIX}/{{category_id}}/attributes",
-        response_model=CategoryAttributeResponse,
-        to_response=_to_attribute,
-        create_schema=CreateCategoryAttributeRequest,
-        update_schema=UpdateCategoryAttributeRequest,
-        get_db_dep=_db_dependency,
-        create_fn=lambda body, db, context: CategoryAttributeService(
-            db, audit, broker
-        ).create(
-            actor_id=uuid.UUID(int=0),
-            category_id=AttributeRequestContext.model_validate(
-                {"request": context["request"]}
-            ).path_params.category_id,
+@attribute_router.post(
+    f"{CATEGORIES_PREFIX}/{{category_id}}/attributes",
+    response_model=CategoryAttributeResponse,
+    status_code=201,
+)
+def create_attribute(
+    request: Request,
+    body: CreateCategoryAttributeRequest,
+    claims: AuthDep,
+    db: DbDep,
+    service: AttributeServiceDep,
+) -> CategoryAttributeResponse:
+    """Create a new attribute definition for the given category."""
+    category_id = AttributeRequestContext.model_validate(
+        {"request": request}
+    ).path_params.category_id
+    result = _to_attribute(
+        service.create(
+            actor_id=claims.actor_id(),
+            category_id=category_id,
             key=body.key,
             value_type=body.value_type,
             required=body.required,
-        ),
-        get_fn=lambda resource_id, db, context: CategoryAttributeService(
-            db, audit, broker
-        ).get(resource_id),
-        update_fn=lambda resource_id, data, db, context: CategoryAttributeService(
-            db, audit, broker
-        ).update(uuid.UUID(int=0), resource_id, data),
-        delete_fn=lambda resource_id, db, context: CategoryAttributeService(
-            db, audit, broker
-        ).delete(uuid.UUID(int=0), resource_id),
+        )
     )
+    db.commit()
+    return result
 
 
-attribute_sub_router = APIRouter()
+@attribute_router.get(
+    f"{CATEGORIES_PREFIX}/{{category_id}}/attributes/{{attribute_id}}",
+    response_model=CategoryAttributeResponse,
+)
+def get_attribute(
+    attribute_id: uuid.UUID,
+    service: AttributeServiceDep,
+) -> CategoryAttributeResponse:
+    """Return the attribute with the given id."""
+    return _to_attribute(service.get(attribute_id))
 
 
-@attribute_sub_router.get(
+@attribute_router.patch(
+    f"{CATEGORIES_PREFIX}/{{category_id}}/attributes/{{attribute_id}}",
+    response_model=CategoryAttributeResponse,
+)
+def update_attribute(
+    attribute_id: uuid.UUID,
+    body: UpdateCategoryAttributeRequest,
+    claims: AuthDep,
+    db: DbDep,
+    service: AttributeServiceDep,
+) -> CategoryAttributeResponse:
+    """Partially update the attribute with the given id."""
+    result = _to_attribute(
+        service.update(
+            claims.actor_id(), attribute_id, body.model_dump(exclude_unset=True)
+        )
+    )
+    db.commit()
+    return result
+
+
+@attribute_router.delete(
+    f"{CATEGORIES_PREFIX}/{{category_id}}/attributes/{{attribute_id}}", status_code=204
+)
+def delete_attribute(
+    attribute_id: uuid.UUID,
+    claims: AuthDep,
+    db: DbDep,
+    service: AttributeServiceDep,
+) -> None:
+    """Delete the attribute with the given id."""
+    service.delete(claims.actor_id(), attribute_id)
+    db.commit()
+
+
+@attribute_router.get(
     f"{CATEGORIES_PREFIX}/{{category_id}}/attributes",
     response_model=PaginatedResponse[CategoryAttributeResponse],
 )
 def list_category_attributes(
     category_id: uuid.UUID,
-    db: DbDep,
-    audit: AuditDep,
-    broker: BrokerDep,
+    service: AttributeServiceDep,
     cursor: str | None = None,
 ) -> PaginatedResponse[CategoryAttributeResponse]:
     """Return a paginated page of attribute definitions for the given category."""
     decoded = decode_cursor(cursor) if cursor else None
-    rows = CategoryAttributeService(db, audit, broker).list_by_category(
-        category_id, limit=PAGE_SIZE + 1, cursor=decoded
-    )
+    rows = service.list_by_category(category_id, limit=PAGE_SIZE + 1, cursor=decoded)
     return paginate(
         rows=rows,
         page_size=PAGE_SIZE,
@@ -537,84 +737,34 @@ def list_category_attributes(
 def register_exception_handlers(app: FastAPI) -> None:
     """Register catalog domain exception handlers on the FastAPI app.
 
-    Maps domain exceptions to HTTP responses using the platform error envelope.
-    Add new handlers here as new domain exceptions are introduced.
+    Handles all ResourceNotFound subclasses as 404, ResourceAlreadyExists
+    subclasses as 409, and InvalidVariantAttributes as 400.
 
     Args:
         app: The FastAPI application instance.
     """
 
-    @app.exception_handler(CategoryNotFound)
-    def handle_category_not_found(
-        request: Request, exc: CategoryNotFound
-    ) -> JSONResponse:
-        logger.warning("Category not found: %s", exc.resource_id)
+    @app.exception_handler(ResourceNotFound)
+    def handle_not_found(request: Request, exc: ResourceNotFound) -> JSONResponse:
+        logger.warning(
+            "resource_not_found resource=%s id=%s", exc.resource_name, exc.resource_id
+        )
         return JSONResponse(status_code=404, content=error_response(exc.code, str(exc)))
 
-    @app.exception_handler(CategoryAlreadyExists)
-    def handle_category_already_exists(
-        request: Request, exc: CategoryAlreadyExists
+    @app.exception_handler(ResourceAlreadyExists)
+    def handle_already_exists(
+        request: Request, exc: ResourceAlreadyExists
     ) -> JSONResponse:
-        logger.warning("Category already exists: %s", exc.identifier)
-        return JSONResponse(status_code=409, content=error_response(exc.code, str(exc)))
-
-    @app.exception_handler(BrandNotFound)
-    def handle_brand_not_found(request: Request, exc: BrandNotFound) -> JSONResponse:
-        logger.warning("Brand not found: %s", exc.resource_id)
-        return JSONResponse(status_code=404, content=error_response(exc.code, str(exc)))
-
-    @app.exception_handler(BrandAlreadyExists)
-    def handle_brand_already_exists(
-        request: Request, exc: BrandAlreadyExists
-    ) -> JSONResponse:
-        logger.warning("Brand already exists: %s", exc.identifier)
-        return JSONResponse(status_code=409, content=error_response(exc.code, str(exc)))
-
-    @app.exception_handler(ProductNotFound)
-    def handle_product_not_found(
-        request: Request, exc: ProductNotFound
-    ) -> JSONResponse:
-        logger.warning("Product not found: %s", exc.resource_id)
-        return JSONResponse(status_code=404, content=error_response(exc.code, str(exc)))
-
-    @app.exception_handler(ProductAlreadyExists)
-    def handle_product_already_exists(
-        request: Request, exc: ProductAlreadyExists
-    ) -> JSONResponse:
-        logger.warning("Product already exists: %s", exc.identifier)
-        return JSONResponse(status_code=409, content=error_response(exc.code, str(exc)))
-
-    @app.exception_handler(VariantNotFound)
-    def handle_variant_not_found(
-        request: Request, exc: VariantNotFound
-    ) -> JSONResponse:
-        logger.warning("Variant not found: %s", exc.resource_id)
-        return JSONResponse(status_code=404, content=error_response(exc.code, str(exc)))
-
-    @app.exception_handler(VariantAlreadyExists)
-    def handle_variant_already_exists(
-        request: Request, exc: VariantAlreadyExists
-    ) -> JSONResponse:
-        logger.warning("Variant already exists: %s", exc.identifier)
-        return JSONResponse(status_code=409, content=error_response(exc.code, str(exc)))
-
-    @app.exception_handler(CategoryAttributeNotFound)
-    def handle_attribute_not_found(
-        request: Request, exc: CategoryAttributeNotFound
-    ) -> JSONResponse:
-        logger.warning("CategoryAttribute not found: %s", exc.resource_id)
-        return JSONResponse(status_code=404, content=error_response(exc.code, str(exc)))
-
-    @app.exception_handler(CategoryAttributeAlreadyExists)
-    def handle_attribute_already_exists(
-        request: Request, exc: CategoryAttributeAlreadyExists
-    ) -> JSONResponse:
-        logger.warning("CategoryAttribute already exists: %s", exc.identifier)
+        logger.warning(
+            "resource_already_exists resource=%s identifier=%s",
+            exc.resource_name,
+            exc.identifier,
+        )
         return JSONResponse(status_code=409, content=error_response(exc.code, str(exc)))
 
     @app.exception_handler(InvalidVariantAttributes)
     def handle_invalid_variant_attributes(
         request: Request, exc: InvalidVariantAttributes
     ) -> JSONResponse:
-        logger.warning("Invalid variant attributes: %s", exc.violations)
+        logger.warning("invalid_variant_attributes violations=%s", exc.violations)
         return JSONResponse(status_code=400, content=error_response(exc.code, str(exc)))

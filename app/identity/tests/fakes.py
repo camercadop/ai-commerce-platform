@@ -8,34 +8,34 @@ from app.shared.audit_log import AuditPort, AuditRecord
 def make_customer(**kwargs: object) -> Customer:
     """Build a Customer instance with sensible defaults for testing."""
     customer = Customer()
-    customer.id = kwargs.get("id", uuid.uuid4())  # type: ignore[assignment]
-    customer.identity_provider_id = kwargs.get("identity_provider_id", "sub-123")  # type: ignore[assignment]
-    customer.email = kwargs.get("email", "test@example.com")  # type: ignore[assignment]
-    customer.first_name = kwargs.get("first_name", "Jane")  # type: ignore[assignment]
-    customer.last_name = kwargs.get("last_name", "Doe")  # type: ignore[assignment]
-    customer.deleted_at = kwargs.get("deleted_at")  # type: ignore[assignment]
-    customer.created_at = kwargs.get("created_at", datetime.now(UTC))  # type: ignore[assignment]
-    customer.updated_at = kwargs.get("updated_at", datetime.now(UTC))  # type: ignore[assignment]
-    customer.addresses = kwargs.get("addresses", [])  # type: ignore[assignment]
-    customer.preferences = kwargs.get("preferences", [])  # type: ignore[assignment]
+    customer.id = kwargs.get("id", uuid.uuid4())
+    customer.identity_provider_id = kwargs.get("identity_provider_id", "sub-123")
+    customer.email = kwargs.get("email", "test@example.com")
+    customer.first_name = kwargs.get("first_name", "Jane")
+    customer.last_name = kwargs.get("last_name", "Doe")
+    customer.deleted_at = kwargs.get("deleted_at")
+    customer.created_at = kwargs.get("created_at", datetime.now(UTC))
+    customer.updated_at = kwargs.get("updated_at", datetime.now(UTC))
+    customer.addresses = kwargs.get("addresses", [])
+    customer.preferences = kwargs.get("preferences", [])
     return customer
 
 
 def make_address(**kwargs: object) -> Address:
     """Build an Address instance with sensible defaults for testing."""
     address = Address()
-    address.id = kwargs.get("id", uuid.uuid4())  # type: ignore[assignment]
-    address.customer_id = kwargs.get("customer_id", uuid.uuid4())  # type: ignore[assignment]
-    address.label = kwargs.get("label", "Home")  # type: ignore[assignment]
-    address.street = kwargs.get("street", "123 Main St")  # type: ignore[assignment]
-    address.city = kwargs.get("city", "Springfield")  # type: ignore[assignment]
-    address.state = kwargs.get("state", "IL")  # type: ignore[assignment]
-    address.country = kwargs.get("country", "US")  # type: ignore[assignment]
-    address.postal_code = kwargs.get("postal_code", "62701")  # type: ignore[assignment]
-    address.is_default = kwargs.get("is_default", False)  # type: ignore[assignment]
-    address.deleted_at = kwargs.get("deleted_at")  # type: ignore[assignment]
-    address.created_at = kwargs.get("created_at", datetime.now(UTC))  # type: ignore[assignment]
-    address.updated_at = kwargs.get("updated_at", datetime.now(UTC))  # type: ignore[assignment]
+    address.id = kwargs.get("id", uuid.uuid4())
+    address.customer_id = kwargs.get("customer_id", uuid.uuid4())
+    address.label = kwargs.get("label", "Home")
+    address.street = kwargs.get("street", "123 Main St")
+    address.city = kwargs.get("city", "Springfield")
+    address.state = kwargs.get("state", "IL")
+    address.country = kwargs.get("country", "US")
+    address.postal_code = kwargs.get("postal_code", "62701")
+    address.is_default = kwargs.get("is_default", False)
+    address.deleted_at = kwargs.get("deleted_at")
+    address.created_at = kwargs.get("created_at", datetime.now(UTC))
+    address.updated_at = kwargs.get("updated_at", datetime.now(UTC))
     return address
 
 
@@ -89,6 +89,20 @@ class FakeCustomerRepository:
     def delete(self, record: Customer) -> None:
         """Soft-delete the given customer."""
         record.deleted_at = datetime.now(UTC)
+
+    def upsert_preference(self, customer_id: uuid.UUID, key: str, value: str) -> None:
+        """Insert or update a preference for the given customer."""
+        customer = self.get_by_id(customer_id)
+        if customer is None:
+            return
+        existing = next((p for p in customer.preferences if p.key == key), None)
+        if existing is not None:
+            existing.value = value
+        else:
+            pref = CustomerPreference()
+            pref.key = key
+            pref.value = value
+            customer.preferences.append(pref)
 
 
 class FakeAddressRepository:
