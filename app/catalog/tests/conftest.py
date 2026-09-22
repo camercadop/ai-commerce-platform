@@ -15,13 +15,13 @@ from app.shared.db import BaseModel, DatabaseSettings, build_session_factory
 TEST_DATABASE_URL = os.environ["TEST_DATABASE_URL"]
 
 ACTOR_ID = uuid.uuid4()
+_session_factory = build_session_factory(TEST_DATABASE_URL)
 
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_schema() -> None:
     """Create all tables in the test database once per session."""
-    session_factory = build_session_factory(TEST_DATABASE_URL)
-    engine = session_factory.kw["bind"]
+    engine = _session_factory.kw["bind"]
     BaseModel.metadata.create_all(engine)
 
 
@@ -36,14 +36,13 @@ def app() -> FastAPI:
     )
     fastapi_app = create_app(db_settings, auth_settings)
 
-    session_factory = build_session_factory(TEST_DATABASE_URL)
     claims = TokenClaims(sub=str(ACTOR_ID), email="test@example.com")
 
     container: CatalogContainer = fastapi_app.state.container
     container.audit.override(NoOpAuditRepository())
 
     def override_db():
-        with session_factory() as session:
+        with _session_factory() as session:
             yield session
 
     def override_auth() -> TokenClaims:
@@ -59,8 +58,7 @@ def app() -> FastAPI:
 @pytest.fixture(autouse=True)
 def clean_tables(app: FastAPI) -> None:
     """Truncate all catalog tables between tests to ensure isolation."""
-    session_factory = build_session_factory(TEST_DATABASE_URL)
-    with session_factory() as session:
+    with _session_factory() as session:
         session.execute(
             __import__("sqlalchemy").text(
                 "TRUNCATE catalog_category_attributes, catalog_variants, "

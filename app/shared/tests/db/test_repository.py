@@ -11,6 +11,7 @@ from app.identity.repository import CustomerRepository
 from app.shared.db import BaseModel, BaseRepository, TimestampMixin, build_session_factory
 
 TEST_DATABASE_URL = os.environ["TEST_DATABASE_URL"]
+_session_factory = build_session_factory(TEST_DATABASE_URL)
 
 
 class _DummyModel(TimestampMixin, BaseModel):
@@ -33,15 +34,13 @@ class _DummyRepository(BaseRepository[_DummyModel]):
 @pytest.fixture(scope="module", autouse=True)
 def setup_schema() -> None:
     """Create all tables in the test database once per module."""
-    session_factory = build_session_factory(TEST_DATABASE_URL)
-    engine = session_factory.kw["bind"]
+    engine = _session_factory.kw["bind"]
     BaseModel.metadata.create_all(engine)
 
 @pytest.fixture
 def session() -> Session:
     """Provide a session that rolls back after each test."""
-    session_factory = build_session_factory(TEST_DATABASE_URL)
-    with session_factory() as s:
+    with _session_factory() as s:
         yield s
         s.rollback()
 

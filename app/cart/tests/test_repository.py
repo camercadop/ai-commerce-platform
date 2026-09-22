@@ -12,19 +12,18 @@ from app.cart.tests.fakes import make_cart, make_cart_item
 from app.shared.db import BaseModel, build_session_factory
 
 TEST_DATABASE_URL = os.environ["TEST_DATABASE_URL"]
+_session_factory = build_session_factory(TEST_DATABASE_URL)
 
 
 @pytest.fixture(scope="module", autouse=True)
 def setup_schema() -> None:
-    session_factory = build_session_factory(TEST_DATABASE_URL)
-    engine = session_factory.kw["bind"]
+    engine = _session_factory.kw["bind"]
     BaseModel.metadata.create_all(engine)
 
 
 @pytest.fixture
 def session() -> Generator[Session]:
-    session_factory = build_session_factory(TEST_DATABASE_URL)
-    with session_factory() as s:
+    with _session_factory() as s:
         yield s
         s.rollback()
 

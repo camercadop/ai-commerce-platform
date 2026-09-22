@@ -39,7 +39,7 @@ def _db_dependency() -> Session:
     Never called directly. app.py replaces this with make_get_db(session_factory)
     so FastAPI can introspect a zero-argument signature at import time.
     """
-    raise NotImplementedError
+    raise NotImplementedError  # pragma: no cover
 
 
 def _auth_dependency() -> TokenClaims:
@@ -48,7 +48,7 @@ def _auth_dependency() -> TokenClaims:
     Never called directly. app.py replaces this with the JWT validator dependency
     built from AuthSettings.
     """
-    raise NotImplementedError
+    raise NotImplementedError  # pragma: no cover
 
 
 def _audit_dependency() -> AuditPort:
@@ -57,7 +57,7 @@ def _audit_dependency() -> AuditPort:
     Never called directly. app.py replaces this with the resolved singleton from
     IdentityContainer.
     """
-    raise NotImplementedError
+    raise NotImplementedError  # pragma: no cover
 
 
 DbDep = Annotated[Session, Depends(_db_dependency)]

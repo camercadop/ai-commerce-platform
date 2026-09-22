@@ -16,13 +16,13 @@ TEST_DATABASE_URL = os.environ["TEST_DATABASE_URL"]
 
 ACTOR_ID = uuid.uuid4()
 ACTOR_SUB = "sub-test"
+_session_factory = build_session_factory(TEST_DATABASE_URL)
 
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_schema() -> None:
     """Create all tables in the test database once per session."""
-    session_factory = build_session_factory(TEST_DATABASE_URL)
-    engine = session_factory.kw["bind"]
+    engine = _session_factory.kw["bind"]
     BaseModel.metadata.create_all(engine)
 
 
@@ -37,14 +37,13 @@ def app() -> FastAPI:
     )
     fastapi_app = create_app(db_settings, auth_settings)
 
-    session_factory = build_session_factory(TEST_DATABASE_URL)
     claims = TokenClaims(sub=ACTOR_SUB, email="test@example.com")
 
     container: IdentityContainer = fastapi_app.state.container
     container.audit.override(NoOpAuditRepository())
 
     def override_db():
-        with session_factory() as session:
+        with _session_factory() as session:
             yield session
 
     def override_auth() -> TokenClaims:
@@ -60,8 +59,7 @@ def app() -> FastAPI:
 @pytest.fixture(autouse=True)
 def clean_tables(app: FastAPI) -> None:
     """Truncate all identity tables between tests to ensure isolation."""
-    session_factory = build_session_factory(TEST_DATABASE_URL)
-    with session_factory() as session:
+    with _session_factory() as session:
         session.execute(
             __import__("sqlalchemy").text(
                 "TRUNCATE identity_customers, identity_customer_addresses, "

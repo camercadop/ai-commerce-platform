@@ -89,6 +89,24 @@ class CartItem(TimestampMixin, BaseModel):
     unit_price: Mapped[object] = mapped_column(Numeric(10, 2), nullable=False)
     # Current catalog price at the time of add or update.
 
+    discount_value: Mapped[object] = mapped_column(
+        Numeric(10, 2), nullable=False, default=0
+    )
+    # Absolute discount applied to this item.
+
+    discount_percent: Mapped[object] = mapped_column(
+        Numeric(5, 2), nullable=False, default=0
+    )
+    # Discount rate applied to this item (0–100).
+
+    tax_value: Mapped[object] = mapped_column(Numeric(10, 2), nullable=False, default=0)
+    # Absolute tax amount applied to this item. Zero means tax-free.
+
+    tax_percent: Mapped[object] = mapped_column(
+        Numeric(5, 2), nullable=False, default=0
+    )
+    # Tax rate applied to this item (0–100). Zero means tax-free.
+
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
     # Item lifecycle status (active, unavailable).
 

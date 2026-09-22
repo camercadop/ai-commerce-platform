@@ -5,8 +5,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.cart.app import create_app
-from app.cart.routes import (
+from app.orders.app import create_app
+from app.orders.routes import (
     _audit_dependency,
     _auth_dependency,
     _broker_dependency,
@@ -32,7 +32,7 @@ def setup_schema() -> None:
 
 @pytest.fixture
 def app() -> FastAPI:
-    """Return a configured cart app wired to the test database."""
+    """Return a configured orders app wired to the test database."""
     db_settings = DatabaseSettings(database_base_url=TEST_DATABASE_URL)
     auth_settings = AuthSettings(
         auth_jwt_public_key="test-key",
@@ -60,11 +60,15 @@ def app() -> FastAPI:
 
 @pytest.fixture(autouse=True)
 def clean_tables(app: FastAPI) -> None:
-    """Truncate all cart tables between tests to ensure isolation."""
+    """Truncate all orders tables between tests to ensure isolation."""
     with _session_factory() as session:
         session.execute(
             __import__("sqlalchemy").text(
-                "TRUNCATE commerce_cart_items, commerce_cart_carts "
+                "TRUNCATE "
+                "commerce_orders_adjustments, "
+                "commerce_orders_items, "
+                "commerce_orders_orders, "
+                "commerce_orders_adjustment_rules "
                 "RESTART IDENTITY CASCADE"
             )
         )
@@ -73,5 +77,5 @@ def clean_tables(app: FastAPI) -> None:
 
 @pytest.fixture
 def client(app: FastAPI) -> TestClient:
-    """Return a TestClient for the cart app."""
+    """Return a TestClient for the orders app."""
     return TestClient(app)

@@ -44,6 +44,10 @@ class CartItemResponse(BaseModel):
     variant_id: uuid.UUID
     quantity: int
     unit_price: Decimal
+    discount_value: Decimal
+    discount_percent: Decimal
+    tax_value: Decimal
+    tax_percent: Decimal
     status: str
     created_at: datetime
     updated_at: datetime

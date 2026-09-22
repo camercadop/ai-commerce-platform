@@ -182,6 +182,10 @@ class CartService:
             variant_id=anon_item.variant_id,
             quantity=anon_item.quantity,
             unit_price=price,
+            discount_value=anon_item.discount_value,
+            discount_percent=anon_item.discount_percent,
+            tax_value=anon_item.tax_value,
+            tax_percent=anon_item.tax_percent,
         )
         self.cart_item_repo.session.add(new_item)
         customer_cart.items.append(new_item)
@@ -352,6 +356,10 @@ class CartService:
                 variant_id=variant_id,
                 quantity=quantity,
                 unit_price=price,
+                discount_value=Decimal("0"),
+                discount_percent=Decimal("0"),
+                tax_value=Decimal("0"),
+                tax_percent=Decimal("0"),
             )
             self.cart_item_repo.session.add(item)
             self.cart_item_repo.session.flush()
