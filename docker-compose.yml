@@ -10,6 +10,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sh:/docker-entrypoint-initdb.d/init.sh
+      - ./app:/app:ro
 
   mongodb:
     image: mongo:8

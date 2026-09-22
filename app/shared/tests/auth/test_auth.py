@@ -1,3 +1,5 @@
+import uuid
+
 import jwt
 import pytest
 from fastapi import FastAPI
@@ -11,6 +13,7 @@ from app.shared.auth import (
     TokenClaims,
     build_auth_dependency,
 )
+from app.shared.auth.claims import InvalidActorId
 
 _PRIVATE_KEY = """-----BEGIN RSA PRIVATE KEY-----
 MIIEpQIBAAKCAQEAkqezWjRJCRRnQYjT/bZb/2jPbJAgkmibNaxwerJl3BGXuU9D
@@ -176,3 +179,17 @@ def test_auth_middleware_returns_claims_for_valid_token(
 
     assert response.status_code == 200
     assert response.json()["sub"] == "user-789"
+
+
+def test_actor_id_returns_uuid_when_sub_is_valid_uuid() -> None:
+    uid = uuid.uuid4()
+    claims = TokenClaims(sub=str(uid))
+
+    assert claims.actor_id() == uid
+
+
+def test_actor_id_raises_when_sub_is_not_a_uuid() -> None:
+    claims = TokenClaims(sub="not-a-uuid")
+
+    with pytest.raises(InvalidActorId):
+        claims.actor_id()

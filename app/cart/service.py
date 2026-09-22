@@ -5,6 +5,7 @@ from typing import Literal
 
 from app.cart.events import (
     publish_cart_cleared,
+    publish_cart_created,
     publish_cart_item_added,
     publish_cart_item_removed,
     publish_cart_item_updated,
@@ -209,7 +210,14 @@ class CartService:
         Returns:
             The existing or newly created Cart instance.
         """
-        cart = self.cart_repo.get_or_create_by_session_id(session_id)
+        cart, created = self.cart_repo.get_or_create_by_session_id(session_id)
+        if created:
+            publish_cart_created(
+                self._broker,
+                cart.id,
+                session_id=session_id,
+                customer_id=customer_id,
+            )
         if customer_id is not None and cart.customer_id is None:
             self._claim_simple(cart, customer_id, actor_id)
         return cart

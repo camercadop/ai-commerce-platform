@@ -57,7 +57,7 @@ class CartRepository(BaseRepository[Cart]):
         )
         return self.session.execute(stmt).scalar_one_or_none()
 
-    def get_or_create_by_session_id(self, session_id: str) -> Cart:
+    def get_or_create_by_session_id(self, session_id: str) -> tuple[Cart, bool]:
         """Return the active cart for the session, creating one if none exists.
 
         Uses an optimistic-insert strategy to handle concurrent requests: attempts
@@ -67,15 +67,19 @@ class CartRepository(BaseRepository[Cart]):
 
         Args:
             session_id: The client-supplied session token.
+
+        Returns:
+            A tuple of (cart, created) where created is True if the cart was
+            newly created, False if an existing cart was returned.
         """
         cart = self.get_by_session_id(session_id)
         if cart is not None:
-            return cart
+            return cart, False
         try:
-            return self.create(session_id=session_id)
+            return self.create(session_id=session_id), True
         except IntegrityError:
             self.session.rollback()
-            return self.get_by_session_id(session_id)  # type: ignore[return-value]
+            return self.get_by_session_id(session_id), True  # type: ignore[return-value]
 
 
 class CartItemRepository(BaseRepository[CartItem]):

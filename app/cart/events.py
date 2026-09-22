@@ -192,43 +192,6 @@ def publish_cart_item_removed(
     )
 
 
-def publish_cart_item_unavailable(
-    broker: MessageBroker,
-    cart_id: uuid.UUID,
-    item_id: uuid.UUID,
-    variant_id: uuid.UUID,
-) -> None:
-    """Publish a CartItemUnavailable event.
-
-    Call when a cart item is marked unavailable due to inventory or catalog
-    constraints. The item is kept in-place with updated status. Best-effort —
-    failure logs a warning and does not affect the domain transaction.
-
-    Args:
-        broker: The message broker port.
-        cart_id: UUID of the cart.
-        item_id: UUID of the affected cart item.
-        variant_id: UUID of the product variant.
-    """
-    data: dict[str, Any] = {
-        "item_id": str(item_id),
-        "variant_id": str(variant_id),
-    }
-    _publish(
-        broker,
-        "cart.item.unavailable",
-        EventEnvelope(
-            event_type="CartItemUnavailable",
-            version=_VERSION,
-            producer=_DOMAIN,
-            aggregate_type="cart",
-            aggregate_id=str(cart_id),
-            trace_id=current_trace_id(),
-            data=data,
-        ),
-    )
-
-
 def publish_cart_cleared(broker: MessageBroker, cart_id: uuid.UUID) -> None:
     """Publish a CartCleared event.
 

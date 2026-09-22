@@ -1,120 +1,58 @@
-# Shared
+# shared
 
-Platform infrastructure shared across all domain modules.
+Platform infrastructure shared across all domain modules. Contains no business logic.
+If a package here starts depending on domain concepts (products, orders, customers),
+it belongs in a domain module instead.
 
-This module contains no business logic. If a package here starts depending on domain
-concepts (products, orders, customers), it belongs in a domain module instead.
+## Rationale
 
-## Packages
+Without a shared layer, every domain would independently implement session management,
+JWT validation, response formatting, and observability setup — leading to divergent
+patterns, duplicated bugs, and no consistent contract between services.
 
-| Package | Responsibility |
-| --- | --- |
-| `api/` | Uniform response envelope, error schemas, and shared validators (ADR-014) |
-| `auth/` | Provider-agnostic JWT validation, auth middleware, token claims extraction |
-| `config/` | Pydantic Settings base class, startup validation (ADR-015) |
-| `db/` | SQLAlchemy engine, session factory, declarative base, generic repository |
-| `events/` | Event envelope model, abstract message broker port (ADR-004) |
-| `exceptions.py` | Shared base exception classes (`ResourceNotFound`, `ResourceAlreadyExists`) |
-| `audit_log/` | Abstract audit port, `AuditRecord` schema, `record_audit()` helper, `NoOpAuditRepository` |
-| `observability/` | OpenTelemetry tracing setup, structured logging, `current_trace_id()` (ADR-005) |
-| `storage/` | Abstract object storage port (ADR-004) |
+`app/shared/` solves this by centralizing platform primitives behind stable interfaces.
+Domains consume these interfaces without knowing the underlying provider, which keeps
+them portable and independently testable. Swapping a concrete implementation (e.g.
+replacing the audit store or the message broker) requires no changes to domain code.
+
+## Module layout
+
+```
+app/shared/
+├── api/                # Response envelope, pagination, and input sanitization
+├── audit_log/          # Abstract audit port, record schema, and write helper
+├── auth/               # JWT validation and FastAPI auth dependency factory
+├── config/             # Base settings class for environment-driven configuration
+├── db/                 # ORM base, model mixins, generic repository, and session factory
+├── events/             # Abstract message broker port and event envelope
+├── observability/      # Structured logging and OpenTelemetry tracing
+├── storage/            # Abstract object storage port
+└── exceptions.py       # Shared base exception classes
+```
+
+## Design rules
+
+### Port/adapter boundary
+
+`audit_log/`, `events/`, and `storage/` expose abstract ports only. Concrete
+implementations live in the domain modules that require them (e.g. `app/sys_audit/`).
+Domain code must depend on the port, never on a concrete implementation (ADR-004).
+
+### No cross-domain imports
+
+No package in `app/shared/` may import from any domain module (`app/catalog/`,
+`app/identity/`, etc.). The dependency arrow always points inward: domains depend
+on shared, never the other way around.
+
+### Startup validation
+
+All settings subclass `AppSettings` from `config/`. Missing or invalid configuration
+values raise a `ValidationError` at startup, before the application serves any
+traffic (ADR-015).
 
 ## Usage
 
-### CRUD router
-
-Use `CRUDRouter` from `shared/api/` to generate standard `POST`, `GET /{id}`,
-`PATCH /{id}`, and `DELETE /{id}` routes for a flat resource without boilerplate:
-
-```python
-from app.shared.api import CRUDRouter
-
-router = CRUDRouter(
-    prefix="/api/v1/products",
-    response_model=ProductResponse,
-    create_schema=CreateProductRequest,
-    update_schema=UpdateProductRequest,
-    get_db_dep=get_db,
-    service=ProductService,
-)
-```
-
-Override `to_response` when custom mapping logic is needed, and individual `_fn`
-arguments when the service method names differ from the convention (`create`, `get`,
-`update`, `delete`):
-
-```python
-router = CRUDRouter(
-    ...,
-    service=ProductService,
-    create_fn=lambda body, db: ProductService(db).register(**body.model_dump()),
-)
-```
-
-Add custom routes directly on the returned router for non-standard operations.
-
-### Pagination
-
-Use `paginate()` with `decode_cursor()` to implement keyset pagination on any list endpoint:
-
-```python
-from app.shared.api import decode_cursor, paginate
-
-
-@router.get("/products", response_model=PaginatedResponse[ProductResponse])
-def list_products(
-    db: DbDep,
-    cursor: str | None = None,
-) -> PaginatedResponse[ProductResponse]:
-    decoded = decode_cursor(cursor) if cursor else None
-    rows = service.list(limit=PAGE_SIZE + 1, cursor=decoded)
-    return paginate(
-        rows=rows,
-        page_size=PAGE_SIZE,
-        to_response=lambda p: ProductResponse.model_validate(p, from_attributes=True),
-        get_cursor_fields=lambda p: (p.created_at, p.id),
-    )
-```
-
-`paginate()` slices the `limit+1` rows, detects `has_more`, and encodes the next cursor.
-The repository must return `limit + 1` rows so `paginate()` can detect whether more exist.
-
-### String sanitization
-
-Use `sanitize_strings` to strip control characters from string fields across any schema.
-Assign the result to `_strip` — Pydantic registers it as a validator automatically.
-
-```python
-from app.shared.api import sanitize_strings
-
-
-class CreateProductRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=255)
-    description: str = Field(min_length=1, max_length=1000)
-
-    _strip = sanitize_strings("name", "description")
-```
-
-### Response envelope
-
-All API responses must use the platform envelope from `shared/api/`:
-
-```python
-from app.shared.api import DataResponse, PaginatedResponse, error_response
-
-# single resource
-return DataResponse(data=product)
-
-# collection
-return PaginatedResponse(
-    data=products, pagination=PaginationMeta(next_cursor=cursor, has_more=True)
-)
-
-# error (in exception handlers)
-return JSONResponse(status_code=404, content=error_response("PRODUCT_NOT_FOUND", "..."))
-```
-
-### Settings
+### Configuration
 
 Every domain subclasses `AppSettings` and declares its own configuration keys:
 
@@ -123,77 +61,75 @@ from app.shared.config import AppSettings
 
 
 class CatalogSettings(AppSettings):
-    database_url: str
+    database_base_url: str
     kafka_bootstrap_servers: str
 ```
 
 ### Database session
 
-Inject the session using the `Annotated` pattern — never use `Depends()` in default
-arguments:
+Build the session factory once at startup, then produce a FastAPI dependency with
+`make_get_db`:
 
 ```python
 from typing import Annotated
-from app.shared.db import build_session_factory, get_db
 from fastapi import Depends
+from sqlalchemy.orm import Session
+from app.shared.db import build_session_factory, make_get_db
 
-session_factory = build_session_factory(settings.database_url)
-DbDep = Annotated[Session, Depends(get_db)]
-
-
-@router.get("/products/{id}")
-def get_product(id: uuid.UUID, db: DbDep) -> ProductResponse: ...
+session_factory = build_session_factory(settings.database_base_url)
+DbDep = Annotated[Session, Depends(make_get_db(session_factory))]
 ```
 
-Domain repositories extend `BaseRepository` for generic CRUD:
+Domain models inherit `BaseModel` and the relevant mixins:
+
+```python
+from app.shared.db import BaseModel, SoftDeleteMixin, TimestampMixin
+
+
+class Product(BaseModel, TimestampMixin, SoftDeleteMixin):
+    __tablename__ = "products"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+```
+
+Domain repositories subclass `BaseRepository`:
 
 ```python
 from app.shared.db import BaseRepository
-from app.catalog.models import Product
 
 
 class ProductRepository(BaseRepository[Product]):
     model_class = Product
 ```
 
-### Exceptions
+### Auth
 
-Domain exceptions extend the shared base classes so callers can catch by category:
+Build the dependency once at startup and inject it into protected routes:
 
 ```python
-from app.shared.exceptions import ResourceNotFound, ResourceAlreadyExists
+from typing import Annotated
+from fastapi import Depends
+from app.shared.auth import JWTValidator, TokenClaims, build_auth_dependency
+
+validator = JWTValidator(public_key=settings.auth_jwt_public_key)
+get_current_user = build_auth_dependency(validator)
+CurrentUser = Annotated[TokenClaims, Depends(get_current_user)]
 
 
-class ProductNotFound(ResourceNotFound):
-    code = "PRODUCT_NOT_FOUND"
-    resource_name = "Product"
-
-
-class ProductAlreadyExists(ResourceAlreadyExists):
-    code = "PRODUCT_ALREADY_EXISTS"
-    resource_name = "Product"
+@router.get("/orders")
+def list_orders(claims: CurrentUser) -> list[OrderResponse]:
+    actor_id = claims.actor_id()
+    ...
 ```
 
-### Events
+### Response envelope
 
-Publish events through the domain's `events.py` using the `EventEnvelope`:
+All API responses must use the platform envelope:
 
 ```python
-from app.shared.events import EventEnvelope, MessageBroker
-from app.shared.observability import current_trace_id
+from app.shared.api import DataResponse, PaginatedResponse, error_response
 
-broker.publish(
-    "catalog.product.created",
-    EventEnvelope(
-        event_type="ProductCreated",
-        version=1,
-        producer="catalog",
-        aggregate_type="product",
-        aggregate_id=str(product.id),
-        trace_id=current_trace_id(),
-        data=payload.model_dump(),
-    ),
-)
+return DataResponse(data=product)
+return JSONResponse(status_code=404, content=error_response("PRODUCT_NOT_FOUND", "..."))
 ```
 
 ### Observability
@@ -211,8 +147,7 @@ configure_tracing(
 )
 ```
 
-Use `current_trace_id()` to read the active OTel trace ID as a hex string anywhere
-a trace context needs to be propagated (e.g. event envelopes, audit records):
+Use `current_trace_id()` to propagate trace context into events and audit records:
 
 ```python
 from app.shared.observability import current_trace_id
@@ -220,96 +155,121 @@ from app.shared.observability import current_trace_id
 trace_id = current_trace_id()  # 32-char hex string, or "" if no active span
 ```
 
-### Auth
+### Events
 
-Build the dependency at startup and inject it into protected routes using `Annotated`:
+Publish domain events through the `MessageBroker` port using `EventEnvelope`:
 
 ```python
-from typing import Annotated
-from app.shared.auth import JWTValidator, build_auth_dependency, TokenClaims
-from fastapi import Depends
+from app.shared.events import EventEnvelope, MessageBroker
+from app.shared.observability import current_trace_id
 
-validator = JWTValidator(public_key=settings.auth_jwt_public_key)
-get_current_user = build_auth_dependency(validator)
-CurrentUser = Annotated[TokenClaims, Depends(get_current_user)]
-
-
-@router.get("/orders")
-def list_orders(claims: CurrentUser) -> list[OrderResponse]: ...
+broker.publish(
+    "catalog.product.created",
+    EventEnvelope(
+        event_type="ProductCreated",
+        version=1,
+        producer="catalog",
+        aggregate_type="product",
+        aggregate_id=str(product.id),
+        trace_id=current_trace_id(),
+        data={"id": str(product.id), "name": product.name},
+    ),
+)
 ```
 
 ### Audit log
 
-Depend on `AuditPort` and call `record_audit()` — never import from `app/sys_audit/` directly:
+Depend on `AuditPort` and call `record_audit()` — never import from `app/sys_audit/`
+directly:
 
 ```python
 from app.shared.audit_log import AuditPort, FieldChange, record_audit
 
-
-class ProductService:
-    def __init__(self, session: Session, audit: AuditPort) -> None:
-        self._audit = audit
-
-    def update(self, product_id: uuid.UUID, data: dict[str, Any]) -> Product:
-        product = self.repo.get_by_id(product_id)
-        before = {k: getattr(product, k) for k in data}
-        updated = self.repo.update(product, data)
-        record_audit(
-            self._audit,
-            actor_id=actor_id,
-            operation="update",
-            action="catalog.product_updated",
-            aggregate_type="product",
-            aggregate_id=product_id,
-            domain="catalog",
-            changes={k: FieldChange(before=before[k], after=data[k]) for k in data},
-        )
-        return updated
+record_audit(
+    self._audit,
+    actor_id=actor_id,
+    operation="update",
+    action="catalog.product_updated",
+    aggregate_type="product",
+    aggregate_id=product_id,
+    domain="catalog",
+    changes={k: FieldChange(before=before[k], after=data[k]) for k in data},
+)
 ```
 
-Use `NoOpAuditRepository` in tests and environments without MongoDB:
+### Exceptions
+
+Domain exceptions extend the shared base classes so callers can catch by category:
 
 ```python
-from app.shared.audit_log import NoOpAuditRepository
+from app.shared.exceptions import ResourceAlreadyExists, ResourceNotFound
 
-service = ProductService(session, audit=NoOpAuditRepository())
+
+class ProductNotFound(ResourceNotFound):
+    code = "PRODUCT_NOT_FOUND"
+    resource_name = "Product"
+
+
+class ProductAlreadyExists(ResourceAlreadyExists):
+    code = "PRODUCT_ALREADY_EXISTS"
+    resource_name = "Product"
 ```
 
-### Storage
-
-Depend on the `ObjectStorage` port — never on a concrete implementation:
-
-```python
-from app.shared.storage import ObjectStorage, ObjectNotFound
-
-
-class MediaService:
-    def __init__(self, storage: ObjectStorage) -> None:
-        self._storage = storage
-
-    def fetch(self, key: str) -> bytes:
-        return self._storage.get(key)
-```
-
-## Dependencies
-
-- `PostgreSQL` — transactional data storage via SQLAlchemy
-- `MongoDB` — audit record store via `app/sys_audit/MongoAuditRepository`
-- `OpenTelemetry Collector` — receives traces via OTLP/gRPC when `otel_enabled=True`
-
-## Configuration
-
-| Key | Description | Default |
+| Class | Default code | Use |
 | --- | --- | --- |
-| `DATABASE_URL` | SQLAlchemy connection string | required |
-| `AUTH_JWT_PUBLIC_KEY` | PEM-encoded RSA public key for JWT validation | required |
-| `AUTH_JWT_ALGORITHM` | JWT signing algorithm | `RS256` |
-| `AUTH_JWT_AUDIENCE` | Expected JWT audience claim | `None` |
-| `OTEL_SERVICE_NAME` | Service name reported in traces | required |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP collector gRPC endpoint | `http://localhost:4317` |
-| `OTEL_ENABLED` | Enable OTLP trace export | `True` |
-| `MONGO_USERNAME` | MongoDB username | required |
-| `MONGO_PASSWORD` | MongoDB password | required |
-| `MONGO_HOST` | MongoDB host | required |
-| `MONGO_PORT` | MongoDB port | required |
-| `MONGO_DATABASE` | Database name for audit records | required |
+| `ResourceNotFound` | `NOT_FOUND` | Resource does not exist or was soft-deleted |
+| `ResourceAlreadyExists` | `ALREADY_EXISTS` | Uniqueness constraint violation |
+
+## Dependency injection
+
+Each domain owns a `DeclarativeContainer` that holds infrastructure singletons —
+`audit` and `broker` — shared across all requests. Request-scoped objects (db
+session, services) stay under FastAPI's control.
+
+In `routes.py`, declare sentinel dependencies:
+
+```python
+from app.shared.audit_log import AuditPort
+from app.shared.events import MessageBroker
+
+
+def _audit_dependency() -> AuditPort: ...
+def _broker_dependency() -> MessageBroker: ...
+
+
+AuditDep = Annotated[AuditPort, Depends(_audit_dependency)]
+BrokerDep = Annotated[MessageBroker, Depends(_broker_dependency)]
+```
+
+In `container.py`, declare the singletons:
+
+```python
+from dependency_injector import containers, providers
+from app.shared.audit_log import AuditPort, NoOpAuditRepository
+from app.shared.events import MessageBroker, NoOpMessageBroker
+
+
+class CatalogContainer(containers.DeclarativeContainer):
+    audit: providers.Singleton[AuditPort] = providers.Singleton(NoOpAuditRepository)
+    broker: providers.Singleton[MessageBroker] = providers.Singleton(NoOpMessageBroker)
+```
+
+In `app.py`, override the sentinels and wire the container at startup:
+
+```python
+container = CatalogContainer()
+container.audit.override(MongoAuditRepository(mongo_settings))
+container.broker.override(resolved_broker)
+app.state.container = container
+
+app.dependency_overrides[_audit_dependency] = lambda: container.audit()
+app.dependency_overrides[_broker_dependency] = lambda: container.broker()
+```
+
+In tests, override with no-ops:
+
+```python
+container = CatalogContainer()
+container.audit.override(NoOpAuditRepository())
+container.broker.override(NoOpMessageBroker())
+```

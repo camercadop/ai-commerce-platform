@@ -15,6 +15,8 @@ Developer workflow lives in `docs/development.md`.
 ai-commerce-platform/
 ├── app/
 │   ├── identity/       # Customer profiles and addresses
+│   ├── catalog/        # Product catalog
+│   ├── cart/           # Shopping cart
 │   ├── sys_audit/      # Audit log implementation
 │   └── shared/
 │       ├── api/
@@ -42,12 +44,16 @@ Every domain module under `app/` follows this internal structure:
 <domain>/
 ├── README.md
 ├── app.py          # create_app() factory — FastAPI app for this domain
-├── routes.py       # APIRouter with all endpoints
+├── container.py    # DeclarativeContainer — infrastructure singletons (audit, broker)
+├── routes.py       # APIRouter with all endpoints and sentinel dependencies
 ├── schemas.py      # Pydantic request/response models
 ├── service.py      # Business logic
 ├── repository.py   # Database access
 ├── models.py       # SQLAlchemy models
-└── events.py       # Kafka producers and consumers for this domain
+├── exceptions.py   # Domain-specific exceptions extending shared base classes
+├── events.py       # Domain event publishers
+├── ports.py        # Abstract ports for external dependencies (optional)
+└── adapters.py     # Concrete adapter implementations for ports (optional)
 ```
 
 Not every file is required for every domain.
@@ -68,13 +74,37 @@ Not every file is required for every domain.
 
 | Package | Responsibility |
 | --- | --- |
-| `api/` | Uniform response envelope and error schemas (ADR-014) |
-| `config/` | Pydantic Settings base class, startup validation (ADR-015) |
-| `db/` | SQLAlchemy engine setup and session factory |
-| `events/` | Kafka producer/consumer base, event envelope Pydantic model |
-| `observability/` | OpenTelemetry setup, structured logging, metrics |
+| `api/` | Uniform response envelope, error schemas, pagination, validators (ADR-014) |
+| `audit_log/` | Abstract audit port, `AuditRecord` schema, `record_audit()` helper, `NoOpAuditRepository` |
 | `auth/` | JWT validation, auth middleware, token claims extraction |
-| `storage/` | ObjectStorage abstraction and MinIO/S3 implementation (ADR-004) |
+| `config/` | Pydantic Settings base class, startup validation (ADR-015) |
+| `db/` | SQLAlchemy engine, session factory, declarative base, mixins, generic repository |
+| `events/` | Event envelope model, abstract `MessageBroker` port, `NoOpMessageBroker` |
+| `exceptions.py` | Shared base exception classes (`ResourceNotFound`, `ResourceAlreadyExists`) |
+| `observability/` | OpenTelemetry tracing setup, structured logging, `current_trace_id()` |
+| `storage/` | Abstract `ObjectStorage` port (ADR-004) |
+
+---
+
+## Dependency Injection
+
+Domains use `dependency-injector` (`DeclarativeContainer`) to manage infrastructure
+singletons — `audit` and `broker` — that are shared across all requests within a
+domain. Request-scoped objects (db session, services) remain under FastAPI's control.
+
+Each domain's `routes.py` declares sentinel dependency functions (e.g. `_audit_dependency`,
+`_broker_dependency`) that are never called directly. `app.py` overrides them at startup
+via `app.dependency_overrides`, pulling resolved singletons from the container:
+
+```python
+container = CatalogContainer()
+container.audit.override(MongoAuditRepository(mongo_settings))
+app.dependency_overrides[_audit_dependency] = lambda: container.audit()
+```
+
+This keeps routes free of infrastructure construction logic and makes the wiring
+explicit and testable — tests override the container with no-ops without touching
+route code.
 
 ---
 

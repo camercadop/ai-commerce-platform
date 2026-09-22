@@ -77,22 +77,50 @@ def create(self, **kwargs: object) -> Customer:
     return customer
 ```
 
-## 5. Write route smoke tests using the test client
+## 5. Write route tests using the test client
 
-A route smoke test verifies that the endpoint is wired correctly — the right handler is reached, the right status code is returned, and error mapping works. It does not assert response body details or business logic; those belong in the service tests.
+Route tests verify that the endpoint is wired correctly — the right handler is reached, the right status code is returned, the response body is correctly shaped, and error mapping works. Business logic belongs in the service tests.
 
-Cover the happy path and the primary error cases (404, 409) for each endpoint. Assert only the status code.
+Every endpoint requires two kinds of tests:
 
-Define reusable request payloads as module-level constants:
+- A smoke test that asserts only the status code. Smoke tests are prefixed with `test_smoke_` so they are immediately identifiable by name and can be targeted with `-k smoke`.
+- A body test that asserts the key fields of the response body on the happy path.
+
+Error path tests (404, 409, 400) are not smoke tests — name them descriptively and assert both the status code and the `error.code` field in the response body.
+
+Define request payloads using `make_<payload>` factory functions with Faker-generated defaults. Each function accepts `**kwargs` so individual tests can pin specific fields they care about:
+
+```python
+fake = Faker()
+
+
+def make_product_payload(**kwargs: object) -> dict[str, object]:
+    """Build a valid create-product request payload with randomised defaults."""
+    return {
+        "sku": fake.bothify("SKU-###"),
+        "name": fake.word(),
+        "base_price": "9.99",
+        **kwargs,
+    }
+```
+
+This keeps tests independent from each other — no shared state, no risk of one test's data affecting another. Inline literals are acceptable when a test asserts a specific value and co-location makes the intent clearer (e.g. `json={"name": "Updated"}` paired with `assert data["name"] == "Updated"`).
 
 ```python
 PRODUCT_PAYLOAD = {"sku": "SKU-001", "name": "Widget", "base_price": "9.99"}
 
 
-def test_create_product_returns_201(client: TestClient) -> None:
+def test_smoke_create_product(client: TestClient) -> None:
     response = client.post("/api/v1/catalog/products", json=PRODUCT_PAYLOAD)
 
     assert response.status_code == 201
+
+
+def test_create_product_returns_expected_body(client: TestClient) -> None:
+    data = client.post("/api/v1/catalog/products", json=PRODUCT_PAYLOAD).json()
+
+    assert data["sku"] == PRODUCT_PAYLOAD["sku"]
+    assert data["name"] == PRODUCT_PAYLOAD["name"]
 
 
 def test_create_product_conflict_returns_409(client: TestClient) -> None:
@@ -100,12 +128,14 @@ def test_create_product_conflict_returns_409(client: TestClient) -> None:
     response = client.post("/api/v1/catalog/products", json=PRODUCT_PAYLOAD)
 
     assert response.status_code == 409
+    assert response.json()["error"]["code"] == "PRODUCT_ALREADY_EXISTS"
 
 
 def test_get_product_not_found_returns_404(client: TestClient) -> None:
     response = client.get(f"/api/v1/catalog/products/{uuid.uuid4()}")
 
     assert response.status_code == 404
+    assert response.json()["error"]["code"] == "PRODUCT_NOT_FOUND"
 ```
 
 ## 6. Simulate integrity errors with a raising repository

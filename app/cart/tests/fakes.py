@@ -13,13 +13,12 @@ def make_cart(**kwargs: Any) -> Cart:
     """Build a Cart instance with sensible defaults for testing."""
     obj = Cart()
     obj.id = kwargs.get("id", uuid.uuid4())
-    obj.session_id = kwargs.get("session_id", "session-1")
+    obj.session_id = kwargs.get("session_id", str(uuid.uuid4()))
     obj.customer_id = kwargs.get("customer_id", None)
     obj.status = kwargs.get("status", "active")
     obj.deleted_at = kwargs.get("deleted_at", None)
     obj.created_at = kwargs.get("created_at", datetime.now(UTC))
     obj.updated_at = kwargs.get("updated_at", datetime.now(UTC))
-    obj.items = kwargs.get("items", [])
     return obj
 
 
@@ -87,14 +86,14 @@ class FakeCartRepository:
             None,
         )
 
-    def get_or_create_by_session_id(self, session_id: str) -> Cart:
+    def get_or_create_by_session_id(self, session_id: str) -> tuple[Cart, bool]:
         """Return the active cart for the session, creating one if needed."""
         cart = self.get_by_session_id(session_id)
         if cart is not None:
-            return cart
+            return cart, False
         cart = make_cart(session_id=session_id)
         self._store[cart.id] = cart
-        return cart
+        return cart, True
 
 
 class FakeCartItemRepository:

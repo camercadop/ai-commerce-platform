@@ -24,13 +24,15 @@ uv sync                        # install dependencies
 uv run pre-commit install      # install pre-commit hooks
 ```
 
-The Postgres container automatically provisions the following databases on first
-startup via `docker/postgres/init.sh`:
+The Postgres container automatically provisions databases on first startup via
+`docker/postgres/init.sh`. It scans every domain under `app/` and reads the
+database name from `app/<domain>/migrations/db.conf` if present, falling back
+to `commerce_<domain>`.
 
-| Database | Owner |
-| --- | --- |
-| `commerce` | default maintenance DB |
-| `commerce_identity` | identity domain |
+```ini
+# app/<domain>/migrations/db.conf
+DB_NAME=commerce_<domain>
+```
 
 ---
 
@@ -48,10 +50,10 @@ Start PostgreSQL and MongoDB (required for audit log):
 docker compose up -d postgres mongodb
 ```
 
-Run the identity service locally:
+Run a domain service locally:
 
 ```bash
-uv run uvicorn app.identity.app:create_app --factory --reload
+uv run uvicorn app.<domain>.app:create_app --factory --reload
 ```
 
 ---

@@ -23,6 +23,7 @@ below to decide what applies.
 | `models.py` | The domain has a database |
 | `events.py` | The domain publishes or consumes Kafka events |
 | `migrations/` | The domain has a database |
+| `migrations/db.conf` | The domain has a database |
 | `tests/` | Always |
 
 Full layout of a domain with all files:
@@ -40,6 +41,7 @@ app/<domain>/
 ├── migrations/
 │   ├── env.py
 │   ├── alembic.ini
+│   ├── db.conf
 │   └── versions/
 └── tests/
     ├── conftest.py
@@ -84,6 +86,15 @@ Run migrations for a specific domain by pointing Alembic at the domain's config:
 uv run alembic -c app/<domain>/migrations/alembic.ini upgrade head
 ```
 
+Add a `db.conf` file to declare the database name used by the Postgres init script:
+
+```ini
+# app/<domain>/migrations/db.conf
+DB_NAME=commerce_<domain>
+```
+
+If omitted, the init script falls back to `commerce_<domain>`.
+
 See `docs/development.md` for the full migration workflow.
 
 ---
@@ -94,4 +105,5 @@ See `docs/development.md` for the full migration workflow.
 - Every domain must expose a `create_app()` factory in `app.py`.
 - No domain may import from another domain's internals.
 - Every domain with a database must have its own Alembic environment under `app/<domain>/migrations/`.
+- Every domain with a database must have a `db.conf` under `app/<domain>/migrations/` declaring `DB_NAME`.
 - Every domain must have a `tests/` directory under `app/<domain>/`.
