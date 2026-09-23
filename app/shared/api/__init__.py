@@ -1,3 +1,4 @@
+from app.shared.api.exception_handlers import register_exception_handlers
 from app.shared.api.pagination import decode_cursor, encode_cursor, paginate
 from app.shared.api.schemas import (
     DataResponse,
@@ -19,5 +20,6 @@ __all__ = [
     "encode_cursor",
     "error_response",
     "paginate",
+    "register_exception_handlers",
     "sanitize_strings",
 ]

@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.catalog.exceptions import InvalidVariantAttributes
+from app.catalog.exceptions import CatalogError
 from app.catalog.repository import (
     BrandRepository,
     CategoryAttributeRepository,
@@ -50,7 +50,6 @@ from app.shared.api.schemas import PaginatedResponse
 from app.shared.audit_log import AuditPort
 from app.shared.auth import TokenClaims
 from app.shared.events import MessageBroker
-from app.shared.exceptions import ResourceAlreadyExists, ResourceNotFound
 
 logger = logging.getLogger(__name__)
 
@@ -737,34 +736,14 @@ def list_category_attributes(
 def register_exception_handlers(app: FastAPI) -> None:
     """Register catalog domain exception handlers on the FastAPI app.
 
-    Handles all ResourceNotFound subclasses as 404, ResourceAlreadyExists
-    subclasses as 409, and InvalidVariantAttributes as 400.
-
     Args:
         app: The FastAPI application instance.
     """
 
-    @app.exception_handler(ResourceNotFound)
-    def handle_not_found(request: Request, exc: ResourceNotFound) -> JSONResponse:
-        logger.warning(
-            "resource_not_found resource=%s id=%s", exc.resource_name, exc.resource_id
+    @app.exception_handler(CatalogError)
+    def handle_catalog_error(request: Request, exc: CatalogError) -> JSONResponse:
+        logger.warning("catalog_error code=%s message=%s", exc.code, str(exc))
+        return JSONResponse(
+            status_code=getattr(exc, "status_code", 400),
+            content=error_response(exc.code, str(exc)),
         )
-        return JSONResponse(status_code=404, content=error_response(exc.code, str(exc)))
-
-    @app.exception_handler(ResourceAlreadyExists)
-    def handle_already_exists(
-        request: Request, exc: ResourceAlreadyExists
-    ) -> JSONResponse:
-        logger.warning(
-            "resource_already_exists resource=%s identifier=%s",
-            exc.resource_name,
-            exc.identifier,
-        )
-        return JSONResponse(status_code=409, content=error_response(exc.code, str(exc)))
-
-    @app.exception_handler(InvalidVariantAttributes)
-    def handle_invalid_variant_attributes(
-        request: Request, exc: InvalidVariantAttributes
-    ) -> JSONResponse:
-        logger.warning("invalid_variant_attributes violations=%s", exc.violations)
-        return JSONResponse(status_code=400, content=error_response(exc.code, str(exc)))

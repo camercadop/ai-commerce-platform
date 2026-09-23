@@ -38,6 +38,7 @@ class InventoryUnavailable(CartError):
     """
 
     code = "CART_INVENTORY_UNAVAILABLE"
+    status_code = 409
 
 
 class VariantNotFound(ResourceNotFound):
@@ -51,9 +52,11 @@ class SessionCartConflict(CartError):
     """Raised when a session already has an active cart."""
 
     code = "CART_SESSION_CONFLICT"
+    status_code = 409
 
 
 class MergeConflict(CartError):
     """Raised when cart merge encounters an unresolvable conflict."""
 
     code = "CART_MERGE_CONFLICT"
+    status_code = 409

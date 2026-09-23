@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from app.orders.exceptions import OrderError, OrderNotFound
+from app.orders.exceptions import OrderError
 from app.orders.models import Order
 from app.orders.ports import AdjustmentRulesPort, CartPort
 from app.orders.repository import OrderItemRepository, OrderRepository
@@ -155,14 +155,10 @@ def register_exception_handlers(app: FastAPI) -> None:
         app: The FastAPI application instance.
     """
 
-    @app.exception_handler(OrderNotFound)
-    def handle_order_not_found(request: Request, exc: OrderNotFound) -> JSONResponse:
-        logger.warning("order_not_found id=%s", exc.resource_id)
-        return JSONResponse(status_code=404, content=error_response(exc.code, str(exc)))
-
     @app.exception_handler(OrderError)
     def handle_order_error(request: Request, exc: OrderError) -> JSONResponse:
         logger.warning("order_error code=%s message=%s", exc.code, str(exc))
         return JSONResponse(
-            status_code=exc.status_code, content=error_response(exc.code, str(exc))
+            status_code=getattr(exc, "status_code", 400),
+            content=error_response(exc.code, str(exc)),
         )

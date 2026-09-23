@@ -6,15 +6,7 @@ from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from app.cart.exceptions import (
-    CartItemNotFound,
-    CartNotFound,
-    InvalidCartStatus,
-    InventoryUnavailable,
-    MergeConflict,
-    SessionCartConflict,
-    VariantNotFound,
-)
+from app.cart.exceptions import CartError
 from app.cart.models import Cart
 from app.cart.ports import CatalogPort, InventoryPort
 from app.cart.repository import CartItemRepository, CartRepository
@@ -318,47 +310,10 @@ def register_exception_handlers(app: FastAPI) -> None:
         app: The FastAPI application instance.
     """
 
-    @app.exception_handler(CartNotFound)
-    def handle_cart_not_found(request: Request, exc: CartNotFound) -> JSONResponse:
-        logger.warning("cart_not_found id=%s", exc.resource_id)
-        return JSONResponse(status_code=404, content=error_response(exc.code, str(exc)))
-
-    @app.exception_handler(CartItemNotFound)
-    def handle_cart_item_not_found(
-        request: Request, exc: CartItemNotFound
-    ) -> JSONResponse:
-        logger.warning("cart_item_not_found id=%s", exc.resource_id)
-        return JSONResponse(status_code=404, content=error_response(exc.code, str(exc)))
-
-    @app.exception_handler(InvalidCartStatus)
-    def handle_invalid_cart_status(
-        request: Request, exc: InvalidCartStatus
-    ) -> JSONResponse:
-        logger.warning("invalid_cart_status message=%s", str(exc))
-        return JSONResponse(status_code=400, content=error_response(exc.code, str(exc)))
-
-    @app.exception_handler(InventoryUnavailable)
-    def handle_inventory_unavailable(
-        request: Request, exc: InventoryUnavailable
-    ) -> JSONResponse:
-        logger.warning("inventory_unavailable message=%s", str(exc))
-        return JSONResponse(status_code=409, content=error_response(exc.code, str(exc)))
-
-    @app.exception_handler(VariantNotFound)
-    def handle_variant_not_found(
-        request: Request, exc: VariantNotFound
-    ) -> JSONResponse:
-        logger.warning("variant_not_found id=%s", exc.resource_id)
-        return JSONResponse(status_code=404, content=error_response(exc.code, str(exc)))
-
-    @app.exception_handler(MergeConflict)
-    def handle_merge_conflict(request: Request, exc: MergeConflict) -> JSONResponse:
-        logger.warning("merge_conflict message=%s", str(exc))
-        return JSONResponse(status_code=409, content=error_response(exc.code, str(exc)))
-
-    @app.exception_handler(SessionCartConflict)
-    def handle_session_cart_conflict(
-        request: Request, exc: SessionCartConflict
-    ) -> JSONResponse:
-        logger.warning("session_cart_conflict message=%s", str(exc))
-        return JSONResponse(status_code=409, content=error_response(exc.code, str(exc)))
+    @app.exception_handler(CartError)
+    def handle_cart_error(request: Request, exc: CartError) -> JSONResponse:
+        logger.warning("cart_error code=%s message=%s", exc.code, str(exc))
+        return JSONResponse(
+            status_code=getattr(exc, "status_code", 400),
+            content=error_response(exc.code, str(exc)),
+        )

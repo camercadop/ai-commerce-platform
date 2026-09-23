@@ -1,0 +1,77 @@
+import os
+import uuid
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from app.inventory.app import create_app
+from app.inventory.routes import (
+    _audit_dependency,
+    _auth_dependency,
+    _broker_dependency,
+    _db_dependency,
+)
+from app.shared.audit_log import NoOpAuditRepository
+from app.shared.auth import AuthSettings, TokenClaims
+from app.shared.db import BaseModel, DatabaseSettings, build_session_factory
+from app.shared.events import NoOpMessageBroker
+
+TEST_DATABASE_URL = os.environ["TEST_DATABASE_URL"]
+
+ACTOR_ID = uuid.uuid4()
+_session_factory = build_session_factory(TEST_DATABASE_URL)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_schema() -> None:
+    """Create all tables in the test database once per session."""
+    engine = _session_factory.kw["bind"]
+    BaseModel.metadata.create_all(engine)
+
+
+@pytest.fixture
+def app() -> FastAPI:
+    """Return a configured inventory app wired to the test database."""
+    db_settings = DatabaseSettings(database_base_url=TEST_DATABASE_URL)
+    auth_settings = AuthSettings(
+        auth_jwt_public_key="test-key",
+        auth_jwt_algorithm="HS256",
+        auth_jwt_audience=None,
+    )
+    fastapi_app = create_app(db_settings, auth_settings)
+
+    claims = TokenClaims(sub=str(ACTOR_ID), email="test@example.com")
+
+    def override_db():
+        with _session_factory() as session:
+            yield session
+
+    def override_auth() -> TokenClaims:
+        return claims
+
+    fastapi_app.dependency_overrides[_db_dependency] = override_db
+    fastapi_app.dependency_overrides[_auth_dependency] = override_auth
+    fastapi_app.dependency_overrides[_audit_dependency] = NoOpAuditRepository
+    fastapi_app.dependency_overrides[_broker_dependency] = lambda: NoOpMessageBroker()
+
+    return fastapi_app
+
+
+@pytest.fixture(autouse=True)
+def clean_tables(app: FastAPI) -> None:
+    """Truncate all inventory tables between tests to ensure isolation."""
+    with _session_factory() as session:
+        session.execute(
+            __import__("sqlalchemy").text(
+                "TRUNCATE inventory_movements, inventory_reservations, inventory_items "
+                "RESTART IDENTITY CASCADE"
+            )
+        )
+        session.commit()
+
+
+@pytest.fixture
+def client(app: FastAPI) -> TestClient:
+    """Return a TestClient for the inventory app."""
+    return TestClient(app)

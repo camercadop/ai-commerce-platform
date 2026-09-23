@@ -35,12 +35,7 @@ class OrderRepository(BaseRepository[Order]):
         Args:
             customer_id: The UUID of the customer.
         """
-        stmt = (
-            select(Order)
-            .where(Order.customer_id == customer_id)
-            .order_by(Order.created_at.desc())
-        )
-        return list(self.session.execute(stmt).scalars().all())
+        return self.find_many_by(order_by=["-created_at"], customer_id=customer_id)
 
 
 class OrderItemRepository(BaseRepository[OrderItem]):
@@ -57,9 +52,4 @@ class OrderItemRepository(BaseRepository[OrderItem]):
         Args:
             order_id: The UUID of the order.
         """
-        stmt = (
-            select(OrderItem)
-            .where(OrderItem.order_id == order_id)
-            .order_by(OrderItem.created_at)
-        )
-        return list(self.session.execute(stmt).scalars().all())
+        return self.find_many_by(order_by=["created_at"], order_id=order_id)

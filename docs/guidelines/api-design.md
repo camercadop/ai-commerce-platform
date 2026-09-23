@@ -12,17 +12,30 @@ See [ADR-002: API-First Design](../adr/002-api-first-design.md) and
 Every endpoint must have a request schema and a response schema defined in `schemas.py`
 before the route handler is written.
 
+- All schema classes must inherit from `BaseModel`.
+- All response schemas must declare `model_config = ConfigDict(from_attributes=True)`.
+- Timestamp fields (`created_at`, `updated_at`) must be typed as `datetime`, not `str`.
+
 ```python
 # schemas.py
+
+from datetime import datetime
+from pydantic import BaseModel, ConfigDict, Field
+
+
 class CreateProductRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     price: Decimal = Field(gt=0)
 
 
 class ProductResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     name: str
     price: Decimal
+    created_at: datetime
+    updated_at: datetime
 ```
 
 ## 2. Use the uniform response envelope
@@ -142,3 +155,50 @@ in the same module.
 | Forbidden | `403` |
 | Conflict / duplicate | `409` |
 
+## 10. Register exception handlers at the composition root
+
+Exception handlers are never registered inside route modules. Each domain exposes a
+`register_exception_handlers(app)` function called from `app.py` after the shared
+handlers.
+
+The shared module (`app/shared/api/`) registers handlers for the two platform-level
+base classes:
+
+| Exception | Status code |
+| --- | --- |
+| `ResourceNotFound` | `404` |
+| `ResourceAlreadyExists` | `409` |
+
+Each domain registers a single handler for its own base exception class (e.g.
+`CatalogError`, `CartError`). The status code defaults to `400` unless the exception
+class declares a `status_code` attribute:
+
+```python
+@app.exception_handler(CatalogError)
+def handle_catalog_error(request: Request, exc: CatalogError) -> JSONResponse:
+    logger.warning("catalog_error code=%s message=%s", exc.code, str(exc))
+    return JSONResponse(
+        status_code=getattr(exc, "status_code", 400),
+        content=error_response(exc.code, str(exc)),
+    )
+```
+
+To map a specific subclass to a non-default status code, declare `status_code` on the
+exception class rather than adding a dedicated handler:
+
+```python
+class InventoryUnavailable(CartError):
+    code = "CART_INVENTORY_UNAVAILABLE"
+    status_code = 409
+```
+
+Add a dedicated handler only for exceptions that do not fit the base class hierarchy
+(e.g. `InvalidPreferenceKey` in the identity domain).
+
+Always call `register_shared_exception_handlers(app)` before the domain handler so
+that shared base class handlers are registered first:
+
+```python
+register_shared_exception_handlers(app)
+register_exception_handlers(app)  # domain-specific
+```

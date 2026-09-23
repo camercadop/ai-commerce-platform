@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import update
 
 from app.identity.models import Address, Customer, CustomerPreference
 from app.shared.db import BaseRepository
@@ -24,12 +24,7 @@ class CustomerRepository(BaseRepository[Customer]):
         Args:
             identity_provider_id: The JWT subject claim from the identity provider.
         """
-        stmt = (
-            select(Customer)
-            .where(Customer.identity_provider_id == identity_provider_id)
-            .where(Customer.deleted_at.is_(None))
-        )
-        return self.session.execute(stmt).scalar_one_or_none()
+        return self.find_one_by(identity_provider_id=identity_provider_id)
 
     def upsert_preference(self, customer_id: uuid.UUID, key: str, value: str) -> None:
         """Insert or update a single preference for the given customer.
@@ -87,13 +82,7 @@ class AddressRepository(BaseRepository[Address]):
             customer_id: The UUID of the owning customer.
             label: The address label (e.g. Home, Work).
         """
-        stmt = (
-            select(Address)
-            .where(Address.customer_id == customer_id)
-            .where(Address.label == label)
-            .where(Address.deleted_at.is_(None))
-        )
-        return self.session.execute(stmt).scalar_one_or_none()
+        return self.find_one_by(customer_id=customer_id, label=label)
 
     def clear_default(self, customer_id: uuid.UUID) -> None:
         """Unset is_default on all active addresses for the given customer.

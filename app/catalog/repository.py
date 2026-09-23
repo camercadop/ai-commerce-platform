@@ -83,8 +83,7 @@ class BrandRepository(BaseRepository[Brand]):
         Args:
             name: The brand name to look up.
         """
-        stmt = select(Brand).where(Brand.name == name).where(Brand.deleted_at.is_(None))
-        return self.session.execute(stmt).scalar_one_or_none()
+        return self.find_one_by(name=name)
 
 
 class ProductRepository(BaseRepository[Product]):
@@ -102,12 +101,7 @@ class ProductRepository(BaseRepository[Product]):
         Args:
             sku: The stock-keeping unit to look up.
         """
-        stmt = (
-            select(Product)
-            .where(Product.sku == sku)
-            .where(Product.deleted_at.is_(None))
-        )
-        return self.session.execute(stmt).scalar_one_or_none()
+        return self.find_one_by(sku=sku)
 
     def list_by_category(
         self,
@@ -157,12 +151,7 @@ class VariantRepository(BaseRepository[Variant]):
         Args:
             sku: The stock-keeping unit to look up.
         """
-        stmt = (
-            select(Variant)
-            .where(Variant.sku == sku)
-            .where(Variant.deleted_at.is_(None))
-        )
-        return self.session.execute(stmt).scalar_one_or_none()
+        return self.find_one_by(sku=sku)
 
     def list_by_product(
         self,
@@ -217,9 +206,4 @@ class CategoryAttributeRepository(BaseRepository[CategoryAttribute]):
             category_id: The UUID of the category.
             key: The attribute dimension name (e.g. color, size).
         """
-        stmt = (
-            select(CategoryAttribute)
-            .where(CategoryAttribute.category_id == category_id)
-            .where(CategoryAttribute.key == key)
-        )
-        return self.session.execute(stmt).scalar_one_or_none()
+        return self.find_one_by(category_id=category_id, key=key)

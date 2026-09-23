@@ -96,6 +96,61 @@ class BaseRepository[T: BaseModel]:
         self.session.flush()
         return record
 
+    def find_one_by(self, *, include_deleted: bool = False, **kwargs: Any) -> T | None:
+        """Return a single record matching the given field filters, or None.
+
+        Raises MultipleResultsFound if more than one row matches. Use this for
+        lookups on fields with a uniqueness guarantee. For non-unique fields,
+        use find_many_by or list_page instead. Soft-deleted records are excluded
+        by default; pass include_deleted=True to include them.
+
+        Args:
+            include_deleted: If True, includes soft-deleted records.
+            **kwargs: Column name/value pairs passed to filter_by.
+
+        Example:
+            >>> self.find_one_by(email="user@example.com")
+            >>> self.find_one_by(cart_id=cart_id, variant_id=variant_id)
+            >>> self.find_one_by(slug="blue-shirt", include_deleted=True)
+        """
+        stmt = select(self.model_class).filter_by(**kwargs)
+        if not include_deleted and issubclass(self.model_class, SoftDeleteMixin):
+            stmt = stmt.where(self.model_class.deleted_at.is_(None))
+        return self.session.execute(stmt).scalar_one_or_none()
+
+    def find_many_by(
+        self,
+        *,
+        order_by: list[str] | None = None,
+        include_deleted: bool = False,
+        **kwargs: Any,
+    ) -> list[T]:
+        """Return all records matching the given field filters.
+
+        Soft-deleted records are excluded by default; pass include_deleted=True
+        to include them. Order fields are specified as strings: 'field' for ASC,
+        '-field' for DESC.
+
+        Args:
+            order_by: List of field name strings to order by.
+            include_deleted: If True, includes soft-deleted records.
+            **kwargs: Column name/value pairs passed to filter_by.
+
+        Example:
+            >>> self.find_many_by(order_id=order_id)
+            >>> self.find_many_by(order_by=["created_at"], order_id=order_id)
+            >>> self.find_many_by(order_by=["-created_at", "id"], customer_id=cid)
+        """
+        stmt = select(self.model_class).filter_by(**kwargs)
+        if not include_deleted and issubclass(self.model_class, SoftDeleteMixin):
+            stmt = stmt.where(self.model_class.deleted_at.is_(None))
+        if order_by:
+            for field in order_by:
+                desc = field.startswith("-")
+                col = getattr(self.model_class, field.lstrip("-"))
+                stmt = stmt.order_by(col.desc() if desc else col.asc())
+        return list(self.session.execute(stmt).scalars().all())
+
     def delete(self, record: T) -> None:
         """Soft-delete a record if the model supports it, otherwise hard-delete.
 

@@ -7,9 +7,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.identity.exceptions import (
-    AddressNotFound,
-    CustomerAlreadyExists,
     CustomerNotFound,
+    IdentityError,
     InvalidPreferenceKey,
 )
 from app.identity.repository import AddressRepository, CustomerRepository
@@ -279,40 +278,15 @@ def remove_address(
 def register_exception_handlers(app: FastAPI) -> None:
     """Register identity domain exception handlers on the FastAPI app.
 
-    Maps domain exceptions to HTTP responses using the platform error envelope.
-    Add new handlers here as new domain exceptions are introduced.
-
     Args:
         app: The FastAPI application instance.
     """
 
-    @app.exception_handler(CustomerNotFound)
-    def handle_customer_not_found(
-        request: Request, exc: CustomerNotFound
-    ) -> JSONResponse:
-        logger.warning("Customer not found: %s", exc.resource_id)
+    @app.exception_handler(IdentityError)
+    def handle_identity_error(request: Request, exc: IdentityError) -> JSONResponse:
+        logger.warning("identity_error code=%s message=%s", exc.code, str(exc))
         return JSONResponse(
-            status_code=404,
-            content=error_response(exc.code, str(exc)),
-        )
-
-    @app.exception_handler(CustomerAlreadyExists)
-    def handle_customer_already_exists(
-        request: Request, exc: CustomerAlreadyExists
-    ) -> JSONResponse:
-        logger.warning("Customer already exists: %s", exc.identifier)
-        return JSONResponse(
-            status_code=409,
-            content=error_response(exc.code, str(exc)),
-        )
-
-    @app.exception_handler(AddressNotFound)
-    def handle_address_not_found(
-        request: Request, exc: AddressNotFound
-    ) -> JSONResponse:
-        logger.warning("Address not found: %s", exc.resource_id)
-        return JSONResponse(
-            status_code=404,
+            status_code=getattr(exc, "status_code", 400),
             content=error_response(exc.code, str(exc)),
         )
 
@@ -320,8 +294,5 @@ def register_exception_handlers(app: FastAPI) -> None:
     def handle_invalid_preference_key(
         request: Request, exc: InvalidPreferenceKey
     ) -> JSONResponse:
-        logger.warning("Invalid preference keys: %s", exc.disallowed_keys)
-        return JSONResponse(
-            status_code=400,
-            content=error_response(exc.code, str(exc)),
-        )
+        logger.warning("invalid_preference_key keys=%s", exc.disallowed_keys)
+        return JSONResponse(status_code=400, content=error_response(exc.code, str(exc)))

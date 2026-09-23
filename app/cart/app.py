@@ -14,6 +14,9 @@ from app.cart.routes import (
     register_exception_handlers,
     router,
 )
+from app.shared.api import (
+    register_exception_handlers as register_shared_exception_handlers,
+)
 from app.shared.audit_log import MongoSettings, NoOpAuditRepository
 from app.shared.auth import AuthSettings, JWTValidator, build_auth_dependency
 from app.shared.db import DatabaseSettings, build_session_factory, make_get_db
@@ -77,6 +80,7 @@ def create_app(
     app.dependency_overrides[_catalog_dependency] = lambda: resolved_catalog
     app.dependency_overrides[_inventory_dependency] = lambda: StubInventoryPort()
 
+    register_shared_exception_handlers(app)
     register_exception_handlers(app)
     app.include_router(router)
 

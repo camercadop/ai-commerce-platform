@@ -23,12 +23,7 @@ class CartRepository(BaseRepository[Cart]):
         Args:
             session_id: The client-supplied session token.
         """
-        stmt = (
-            select(Cart)
-            .where(Cart.session_id == session_id)
-            .where(Cart.deleted_at.is_(None))
-        )
-        return self.session.execute(stmt).scalar_one_or_none()
+        return self.find_one_by(session_id=session_id)
 
     def get_by_customer_id(self, customer_id: uuid.UUID) -> Cart | None:
         """Return the active cart belonging to the given customer, or None.
@@ -36,12 +31,7 @@ class CartRepository(BaseRepository[Cart]):
         Args:
             customer_id: The UUID of the customer.
         """
-        stmt = (
-            select(Cart)
-            .where(Cart.customer_id == customer_id)
-            .where(Cart.deleted_at.is_(None))
-        )
-        return self.session.execute(stmt).scalar_one_or_none()
+        return self.find_one_by(customer_id=customer_id)
 
     def get_with_items(self, cart_id: uuid.UUID) -> Cart | None:
         """Return the cart with its items eagerly loaded, or None.
@@ -99,12 +89,7 @@ class CartItemRepository(BaseRepository[CartItem]):
             cart_id: The UUID of the cart.
             variant_id: The UUID of the product variant.
         """
-        stmt = (
-            select(CartItem)
-            .where(CartItem.cart_id == cart_id)
-            .where(CartItem.variant_id == variant_id)
-        )
-        return self.session.execute(stmt).scalar_one_or_none()
+        return self.find_one_by(cart_id=cart_id, variant_id=variant_id)
 
     def list_by_cart(self, cart_id: uuid.UUID) -> list[CartItem]:
         """Return all items belonging to the given cart.
@@ -112,5 +97,4 @@ class CartItemRepository(BaseRepository[CartItem]):
         Args:
             cart_id: The UUID of the cart.
         """
-        stmt = select(CartItem).where(CartItem.cart_id == cart_id)
-        return list(self.session.execute(stmt).scalars().all())
+        return self.find_many_by(cart_id=cart_id)

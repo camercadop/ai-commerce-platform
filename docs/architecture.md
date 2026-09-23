@@ -16,7 +16,7 @@ flowchart TB
     shopper(["Shopper\nBrowses, searches, and places orders"])
     operator(["Operator\nManages catalog and monitors activity"])
 
-    platform["AI Commerce Platform\nIdentity · Catalog · Cart · Orders"]
+    platform["AI Commerce Platform"]
 
     mongo["MongoDB\nAudit log"]
     postgres["PostgreSQL\nTransactional data"]
@@ -41,6 +41,7 @@ flowchart TB
         catalog["Catalog\nCategories, brands, products, variants"]
         cart["Cart\nShopping carts & line items"]
         orders["Orders\nCheckout & order management"]
+        inventory["Inventory\nStock & reservations"]
         sys_audit["sys_audit\nAudit log writer"]
     end
 
@@ -51,6 +52,7 @@ flowchart TB
     shopper -- "HTTPS / REST" --> catalog
     shopper -- "HTTPS / REST" --> cart
     shopper -- "HTTPS / REST" --> orders
+    shopper -- "HTTPS / REST" --> inventory
     operator -- "HTTPS / REST" --> catalog
 
     cart -- "CatalogPort" --> catalog
@@ -60,12 +62,14 @@ flowchart TB
     catalog --> sys_audit
     cart --> sys_audit
     orders --> sys_audit
+    inventory --> sys_audit
     sys_audit -- "pymongo" --> mongo
 
     identity -- "SQLAlchemy" --> postgres
     catalog -- "SQLAlchemy" --> postgres
     cart -- "SQLAlchemy" --> postgres
     orders -- "SQLAlchemy" --> postgres
+    inventory -- "SQLAlchemy" --> postgres
 ```
 
 ---
@@ -116,6 +120,15 @@ flowchart LR
         ord_service --> ord_adj["AdjustmentRulesPort (stub)"]
     end
 
+    subgraph inventory ["Inventory"]
+        direction TB
+        inv_routes["routes"] --> inv_service["service"]
+        inv_service --> inv_repo["repository"]
+        inv_service --> inv_events["events"]
+        inv_service --> inv_audit["AuditPort"]
+        inv_service --> inv_broker["MessageBroker"]
+    end
+
     subgraph infra ["Infrastructure"]
         direction TB
         sys_audit["sys_audit"] --> mongo["MongoDB"]
@@ -126,17 +139,20 @@ flowchart LR
     shopper --> cat_routes
     shopper --> cart_routes
     shopper --> ord_routes
+    shopper --> inv_routes
     operator --> cat_routes
 
     id_audit --> sys_audit
     cat_audit --> sys_audit
     cart_audit --> sys_audit
     ord_audit --> sys_audit
+    inv_audit --> sys_audit
 
     id_repo --> postgres
     cat_repo --> postgres
     cart_repo --> postgres
     ord_repo --> postgres
+    inv_repo --> postgres
 ```
 
 ---
@@ -149,6 +165,8 @@ ai-commerce-platform/
 │   ├── identity/       # Customer profiles and addresses
 │   ├── catalog/        # Product catalog
 │   ├── cart/           # Shopping cart
+│   ├── orders/         # Checkout & order management
+│   ├── inventory/      # Stock & reservations
 │   ├── sys_audit/      # Audit log implementation
 │   └── shared/
 │       ├── api/
