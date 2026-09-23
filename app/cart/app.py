@@ -2,11 +2,15 @@ import logging
 
 from fastapi import FastAPI
 
+from app.cart.adapters import StubCatalogPort, StubInventoryPort
+from app.cart.ports import CatalogPort
 from app.cart.routes import (
     _audit_dependency,
     _auth_dependency,
     _broker_dependency,
+    _catalog_dependency,
     _db_dependency,
+    _inventory_dependency,
     register_exception_handlers,
     router,
 )
@@ -24,22 +28,25 @@ def create_app(
     auth_settings: AuthSettings,
     broker: MessageBroker | None = None,
     mongo_settings: MongoSettings | None = None,
+    catalog_port: CatalogPort | None = None,
 ) -> FastAPI:
     """Create and configure the cart FastAPI application.
 
     Wires the session factory, auth dependency, audit repository, message
-    broker, routers, and exception handlers. Settings are injected rather
-    than read from the environment directly to allow overriding in tests.
+    broker, catalog port, routers, and exception handlers. Settings are
+    injected rather than read from the environment directly to allow
+    overriding in tests.
 
     Args:
-        db_settings: Database connection settings.
+        db_settings: Database connection settings for the cart database.
         auth_settings: JWT validation settings.
         broker: Message broker used to publish cart domain events. When
-            None, a no-op broker is used — suitable for tests and local
-            development without a running broker.
+            None, a no-op broker is used.
         mongo_settings: MongoDB connection settings for the audit log. When
-            None, a no-op audit repository is used — suitable for tests and
-            local development without MongoDB.
+            None, a no-op audit repository is used.
+        catalog_port: CatalogPort implementation for reading variant prices.
+            When None, a StubCatalogPort is used — suitable for tests and
+            local development without a running catalog database.
 
     Returns:
         A fully configured FastAPI application instance.
@@ -61,11 +68,14 @@ def create_app(
         else NoOpAuditRepository()
     )
     resolved_broker = broker if broker is not None else NoOpMessageBroker()
+    resolved_catalog = catalog_port if catalog_port is not None else StubCatalogPort()
 
     app.dependency_overrides[_db_dependency] = make_get_db(session_factory)
     app.dependency_overrides[_auth_dependency] = get_current_user
     app.dependency_overrides[_audit_dependency] = lambda: audit_repo
     app.dependency_overrides[_broker_dependency] = lambda: resolved_broker
+    app.dependency_overrides[_catalog_dependency] = lambda: resolved_catalog
+    app.dependency_overrides[_inventory_dependency] = lambda: StubInventoryPort()
 
     register_exception_handlers(app)
     app.include_router(router)

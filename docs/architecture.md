@@ -9,6 +9,138 @@ Developer workflow lives in `docs/development.md`.
 
 ---
 
+## C4 Level 0 — System Context
+
+```mermaid
+flowchart TB
+    shopper(["Shopper\nBrowses, searches, and places orders"])
+    operator(["Operator\nManages catalog and monitors activity"])
+
+    platform["AI Commerce Platform\nIdentity · Catalog · Cart · Orders"]
+
+    mongo["MongoDB\nAudit log"]
+    postgres["PostgreSQL\nTransactional data"]
+
+    shopper -- "HTTPS / REST" --> platform
+    operator -- "HTTPS / REST" --> platform
+    platform -- "pymongo" --> mongo
+    platform -- "SQLAlchemy" --> postgres
+```
+
+---
+
+## C4 Level 1 — Container Diagram
+
+```mermaid
+flowchart TB
+    shopper(["Shopper"])
+    operator(["Operator"])
+
+    subgraph platform ["AI Commerce Platform"]
+        identity["Identity\nCustomer profiles & addresses"]
+        catalog["Catalog\nCategories, brands, products, variants"]
+        cart["Cart\nShopping carts & line items"]
+        orders["Orders\nCheckout & order management"]
+        sys_audit["sys_audit\nAudit log writer"]
+    end
+
+    postgres["PostgreSQL\nTransactional data"]
+    mongo["MongoDB\nAudit documents"]
+
+    shopper -- "HTTPS / REST" --> identity
+    shopper -- "HTTPS / REST" --> catalog
+    shopper -- "HTTPS / REST" --> cart
+    shopper -- "HTTPS / REST" --> orders
+    operator -- "HTTPS / REST" --> catalog
+
+    cart -- "CatalogPort" --> catalog
+    orders -- "CartPort (stub)" --> cart
+
+    identity --> sys_audit
+    catalog --> sys_audit
+    cart --> sys_audit
+    orders --> sys_audit
+    sys_audit -- "pymongo" --> mongo
+
+    identity -- "SQLAlchemy" --> postgres
+    catalog -- "SQLAlchemy" --> postgres
+    cart -- "SQLAlchemy" --> postgres
+    orders -- "SQLAlchemy" --> postgres
+```
+
+---
+
+## C4 Level 2 — Component Diagram
+
+```mermaid
+flowchart LR
+    shopper(["Shopper"])
+    operator(["Operator"])
+
+    subgraph identity ["Identity"]
+        direction TB
+        id_routes["routes"] --> id_service["service"]
+        id_service --> id_repo["repository"]
+        id_service --> id_events["events"]
+        id_service --> id_audit["AuditPort"]
+    end
+
+    subgraph catalog ["Catalog"]
+        direction TB
+        cat_routes["routes"] --> cat_service["service"]
+        cat_service --> cat_repo["repository"]
+        cat_service --> cat_events["events"]
+        cat_service --> cat_audit["AuditPort"]
+        cat_service --> cat_broker["MessageBroker"]
+    end
+
+    subgraph cart ["Cart"]
+        direction TB
+        cart_routes["routes"] --> cart_service["service"]
+        cart_service --> cart_repo["repository"]
+        cart_service --> cart_events["events"]
+        cart_service --> cart_audit["AuditPort"]
+        cart_service --> cart_broker["MessageBroker"]
+        cart_service --> cart_catalog["CatalogPort (stub)"]
+        cart_service --> cart_inventory["InventoryPort (stub)"]
+    end
+
+    subgraph orders ["Orders"]
+        direction TB
+        ord_routes["routes"] --> ord_service["service"]
+        ord_service --> ord_repo["repository"]
+        ord_service --> ord_events["events"]
+        ord_service --> ord_audit["AuditPort"]
+        ord_service --> ord_broker["MessageBroker"]
+        ord_service --> ord_cart["CartPort (stub)"]
+        ord_service --> ord_adj["AdjustmentRulesPort (stub)"]
+    end
+
+    subgraph infra ["Infrastructure"]
+        direction TB
+        sys_audit["sys_audit"] --> mongo["MongoDB"]
+        postgres["PostgreSQL"]
+    end
+
+    shopper --> id_routes
+    shopper --> cat_routes
+    shopper --> cart_routes
+    shopper --> ord_routes
+    operator --> cat_routes
+
+    id_audit --> sys_audit
+    cat_audit --> sys_audit
+    cart_audit --> sys_audit
+    ord_audit --> sys_audit
+
+    id_repo --> postgres
+    cat_repo --> postgres
+    cart_repo --> postgres
+    ord_repo --> postgres
+```
+
+---
+
 ## Project Structure
 
 ```

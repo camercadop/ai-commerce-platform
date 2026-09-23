@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from app.cart.adapters import StubCatalogPort, StubInventoryPort
 from app.cart.exceptions import (
     CartItemNotFound,
     CartNotFound,
@@ -17,6 +16,7 @@ from app.cart.exceptions import (
     VariantNotFound,
 )
 from app.cart.models import Cart
+from app.cart.ports import CatalogPort, InventoryPort
 from app.cart.repository import CartItemRepository, CartRepository
 from app.cart.schemas import (
     AddCartItemRequest,
@@ -73,10 +73,30 @@ def _broker_dependency() -> MessageBroker:
     raise NotImplementedError  # pragma: no cover
 
 
+def _catalog_dependency() -> CatalogPort:
+    """Sentinel dependency overridden at application startup via dependency_overrides.
+
+    Never called directly. app.py replaces this with a RepoCatalogPort when
+    catalog_db_settings are provided, or a StubCatalogPort otherwise.
+    """
+    raise NotImplementedError  # pragma: no cover
+
+
+def _inventory_dependency() -> InventoryPort:
+    """Sentinel dependency overridden at application startup via dependency_overrides.
+
+    Never called directly. app.py replaces this with a concrete InventoryPort
+    when an inventory module is available, or a StubInventoryPort otherwise.
+    """
+    raise NotImplementedError  # pragma: no cover
+
+
 DbDep = Annotated[Session, Depends(_db_dependency)]
 AuthDep = Annotated[TokenClaims, Depends(_auth_dependency)]
 AuditDep = Annotated[AuditPort, Depends(_audit_dependency)]
 BrokerDep = Annotated[MessageBroker, Depends(_broker_dependency)]
+CatalogDep = Annotated[CatalogPort, Depends(_catalog_dependency)]
+InventoryDep = Annotated[InventoryPort, Depends(_inventory_dependency)]
 
 
 def _to_cart(obj: Cart) -> CartResponse:
@@ -94,13 +114,15 @@ def create_cart(
     auth: AuthDep,
     audit: AuditDep,
     broker: BrokerDep,
+    catalog: CatalogDep,
+    inventory: InventoryDep,
 ) -> CartResponse:
     """Create a new cart for the given session."""
     service = CartService(
         CartRepository(db),
         CartItemRepository(db),
-        StubCatalogPort(),
-        StubInventoryPort(),
+        catalog,
+        inventory,
         audit,
         broker,
     )
@@ -120,13 +142,15 @@ def get_cart(
     auth: AuthDep,
     audit: AuditDep,
     broker: BrokerDep,
+    catalog: CatalogDep,
+    inventory: InventoryDep,
 ) -> CartResponse:
     """Return the cart with its items."""
     service = CartService(
         CartRepository(db),
         CartItemRepository(db),
-        StubCatalogPort(),
-        StubInventoryPort(),
+        catalog,
+        inventory,
         audit,
         broker,
     )
@@ -141,13 +165,15 @@ def claim_cart(
     auth: AuthDep,
     audit: AuditDep,
     broker: BrokerDep,
+    catalog: CatalogDep,
+    inventory: InventoryDep,
 ) -> CartResponse:
     """Claim an anonymous cart for a customer."""
     service = CartService(
         CartRepository(db),
         CartItemRepository(db),
-        StubCatalogPort(),
-        StubInventoryPort(),
+        catalog,
+        inventory,
         audit,
         broker,
     )
@@ -171,13 +197,15 @@ def add_cart_item(
     auth: AuthDep,
     audit: AuditDep,
     broker: BrokerDep,
+    catalog: CatalogDep,
+    inventory: InventoryDep,
 ) -> CartItemResponse:
     """Add an item to the cart."""
     service = CartService(
         CartRepository(db),
         CartItemRepository(db),
-        StubCatalogPort(),
-        StubInventoryPort(),
+        catalog,
+        inventory,
         audit,
         broker,
     )
@@ -202,13 +230,15 @@ def update_cart_item(
     auth: AuthDep,
     audit: AuditDep,
     broker: BrokerDep,
+    catalog: CatalogDep,
+    inventory: InventoryDep,
 ) -> CartItemResponse:
     """Update the quantity of a cart item."""
     service = CartService(
         CartRepository(db),
         CartItemRepository(db),
-        StubCatalogPort(),
-        StubInventoryPort(),
+        catalog,
+        inventory,
         audit,
         broker,
     )
@@ -230,13 +260,15 @@ def remove_cart_item(
     auth: AuthDep,
     audit: AuditDep,
     broker: BrokerDep,
+    catalog: CatalogDep,
+    inventory: InventoryDep,
 ) -> None:
     """Remove an item from the cart permanently."""
     service = CartService(
         CartRepository(db),
         CartItemRepository(db),
-        StubCatalogPort(),
-        StubInventoryPort(),
+        catalog,
+        inventory,
         audit,
         broker,
     )
@@ -255,13 +287,15 @@ def clear_cart(
     auth: AuthDep,
     audit: AuditDep,
     broker: BrokerDep,
+    catalog: CatalogDep,
+    inventory: InventoryDep,
 ) -> None:
     """Remove all items from the cart."""
     service = CartService(
         CartRepository(db),
         CartItemRepository(db),
-        StubCatalogPort(),
-        StubInventoryPort(),
+        catalog,
+        inventory,
         audit,
         broker,
     )

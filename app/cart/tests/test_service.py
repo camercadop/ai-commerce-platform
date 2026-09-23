@@ -145,6 +145,29 @@ class TestCartServiceClaimCart:
         with pytest.raises(MergeConflict):
             svc.claim_cart(session_id="s1", customer_id=customer_id)
 
+    def test_merges_existing_item_when_variant_already_in_customer_cart(self) -> None:
+        customer_id = uuid.uuid4()
+        variant_id = uuid.uuid4()
+        customer_cart = make_cart(session_id="s2", customer_id=customer_id)
+        customer_item = make_cart_item(cart_id=customer_cart.id, variant_id=variant_id, quantity=3)
+        customer_cart.items.append(customer_item)
+        anon_cart = make_cart(session_id="s1")
+        anon_item = make_cart_item(cart_id=anon_cart.id, variant_id=variant_id, quantity=2)
+        anon_cart.items.append(anon_item)
+        svc = _cart_service(
+            carts=[customer_cart, anon_cart],
+            items=[customer_item, anon_item],
+            catalog_prices={variant_id: Decimal("7.00")},
+            inventory_available={variant_id: True},
+        )
+
+        result = svc.claim_cart(session_id="s1", customer_id=customer_id)
+
+        assert result.id == customer_cart.id
+        merged = next(i for i in result.items if i.variant_id == variant_id)
+        assert merged.quantity == 5
+        assert merged.unit_price == Decimal("7.00")
+
     def test_merge_raises_when_inventory_insufficient(self) -> None:
         customer_id = uuid.uuid4()
         variant_id = uuid.uuid4()
