@@ -65,10 +65,10 @@ def clean_tables(app: FastAPI) -> None:
         session.execute(
             __import__("sqlalchemy").text(
                 "TRUNCATE "
-                "commerce_orders_adjustments, "
-                "commerce_orders_items, "
-                "commerce_orders_orders, "
-                "commerce_orders_adjustment_rules "
+                "order_adjustments, "
+                "order_items, "
+                "orders, "
+                "order_adjustment_rules "
                 "RESTART IDENTITY CASCADE"
             )
         )

@@ -18,7 +18,7 @@ from app.shared.db import BaseModel, SoftDeleteMixin, TimestampMixin
 class Cart(SoftDeleteMixin, TimestampMixin, BaseModel):
     """A shopping cart identified by session, optionally bound to a customer."""
 
-    __tablename__ = "commerce_cart_carts"
+    __tablename__ = "carts"
 
     __table_args__ = (
         Index("idx_cart_carts_customer_id", "customer_id"),
@@ -53,7 +53,7 @@ class Cart(SoftDeleteMixin, TimestampMixin, BaseModel):
 class CartItem(TimestampMixin, BaseModel):
     """A single variant line item within a shopping cart."""
 
-    __tablename__ = "commerce_cart_items"
+    __tablename__ = "cart_items"
 
     __table_args__ = (
         Index("idx_cart_items_cart_id", "cart_id"),
@@ -72,7 +72,7 @@ class CartItem(TimestampMixin, BaseModel):
 
     cart_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("commerce_cart_carts.id", name="fk_cart_items_cart_id"),
+        ForeignKey("carts.id", name="fk_cart_items_cart_id"),
         nullable=False,
     )
     # Identifier of the cart this item belongs to.

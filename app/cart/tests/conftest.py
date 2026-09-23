@@ -64,7 +64,7 @@ def clean_tables(app: FastAPI) -> None:
     with _session_factory() as session:
         session.execute(
             __import__("sqlalchemy").text(
-                "TRUNCATE commerce_cart_items, commerce_cart_carts "
+                "TRUNCATE cart_items, carts "
                 "RESTART IDENTITY CASCADE"
             )
         )

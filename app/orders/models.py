@@ -1,9 +1,11 @@
 import uuid
+from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import (
     UUID,
     Boolean,
+    CheckConstraint,
     ForeignKey,
     Index,
     Integer,
@@ -16,6 +18,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.shared.db import BaseModel, TimestampMixin
 
 
+class AdjustmentKind(StrEnum):
+    """Valid kinds for an AdjustmentRule or OrderAdjustment record."""
+
+    DEDUCTION = "deduction"
+    SURCHARGE = "surcharge"
+
+
 class AdjustmentRule(TimestampMixin, BaseModel):
     """A configurable rule that determines automatic order-level adjustments.
 
@@ -24,9 +33,15 @@ class AdjustmentRule(TimestampMixin, BaseModel):
     Only active rules are evaluated.
     """
 
-    __tablename__ = "commerce_orders_adjustment_rules"
+    __tablename__ = "order_adjustment_rules"
 
-    __table_args__ = (Index("idx_orders_adjustment_rules_active", "active"),)
+    __table_args__ = (
+        Index("idx_orders_adjustment_rules_active", "active"),
+        CheckConstraint(
+            "kind IN ('deduction', 'surcharge')",
+            name="ck_orders_adjustment_rules_kind",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -39,8 +54,8 @@ class AdjustmentRule(TimestampMixin, BaseModel):
     # Human-readable label for the adjustment (e.g. "reteiva", "reteica").
 
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
-    # Whether this adjustment reduces or increases the total:
-    # "deduction" or "surcharge".
+    # Whether this adjustment reduces or increases the total.
+    # Must be an AdjustmentKind value.
 
     percent: Mapped[object] = mapped_column(Numeric(5, 2), nullable=False)
     # Rate applied to the order total to compute the adjustment value (0-100).
@@ -58,7 +73,7 @@ class AdjustmentRule(TimestampMixin, BaseModel):
 class Order(TimestampMixin, BaseModel):
     """A customer order created from a cart checkout."""
 
-    __tablename__ = "commerce_orders_orders"
+    __tablename__ = "orders"
 
     __table_args__ = (
         Index("idx_orders_orders_customer_id", "customer_id"),
@@ -118,7 +133,7 @@ class Order(TimestampMixin, BaseModel):
 class OrderItem(TimestampMixin, BaseModel):
     """A single variant line item within an order."""
 
-    __tablename__ = "commerce_orders_items"
+    __tablename__ = "order_items"
 
     __table_args__ = (Index("idx_orders_items_order_id", "order_id"),)
 
@@ -131,7 +146,7 @@ class OrderItem(TimestampMixin, BaseModel):
 
     order_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("commerce_orders_orders.id", name="fk_orders_items_order_id"),
+        ForeignKey("orders.id", name="fk_orders_items_order_id"),
         nullable=False,
     )
     # Identifier of the order this item belongs to.
@@ -172,7 +187,7 @@ class OrderAdjustment(TimestampMixin, BaseModel):
     value reduces or increases the final payable total.
     """
 
-    __tablename__ = "commerce_orders_adjustments"
+    __tablename__ = "order_adjustments"
 
     __table_args__ = (Index("idx_orders_adjustments_order_id", "order_id"),)
 
@@ -185,7 +200,7 @@ class OrderAdjustment(TimestampMixin, BaseModel):
 
     order_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("commerce_orders_orders.id", name="fk_orders_adjustments_order_id"),
+        ForeignKey("orders.id", name="fk_orders_adjustments_order_id"),
         nullable=False,
     )
     # Identifier of the order this adjustment belongs to.
@@ -194,8 +209,8 @@ class OrderAdjustment(TimestampMixin, BaseModel):
     # Human-readable name of the adjustment (e.g. "reteiva", "reteica").
 
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
-    # Whether this adjustment reduces or increases the total:
-    # "deduction" or "surcharge".
+    # Whether this adjustment reduces or increases the total.
+    # Must be an AdjustmentKind value.
 
     percent: Mapped[object] = mapped_column(Numeric(5, 2), nullable=False)
     # Rate used to compute the adjustment value (0-100).
