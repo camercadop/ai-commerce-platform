@@ -1,3 +1,14 @@
+x-domain-env: &domain-env
+  DATABASE_BASE_URL: ${DATABASE_BASE_URL}
+  AUTH_JWT_PUBLIC_KEY: ${AUTH_JWT_PUBLIC_KEY}
+  AUTH_JWT_ALGORITHM: ${AUTH_JWT_ALGORITHM}
+  AUTH_JWT_AUDIENCE: ${AUTH_JWT_AUDIENCE}
+  MONGO_USERNAME: ${MONGO_USERNAME}
+  MONGO_PASSWORD: ${MONGO_PASSWORD}
+  MONGO_HOST: mongodb
+  MONGO_PORT: 27017
+  MONGO_DATABASE: ${MONGO_DATABASE}
+
 services:
   postgres:
     image: postgres:16
@@ -22,6 +33,102 @@ services:
     volumes:
       - mongodb_data:/data/db
 
+  identity:
+    build:
+      context: .
+      args:
+        DOMAIN: identity
+    environment:
+      <<: *domain-env
+    depends_on:
+      - postgres
+      - mongodb
+
+  catalog:
+    build:
+      context: .
+      args:
+        DOMAIN: catalog
+    environment:
+      <<: *domain-env
+    depends_on:
+      - postgres
+      - mongodb
+
+  cart:
+    build:
+      context: .
+      args:
+        DOMAIN: cart
+    environment:
+      <<: *domain-env
+    depends_on:
+      - postgres
+      - mongodb
+
+  orders:
+    build:
+      context: .
+      args:
+        DOMAIN: orders
+    environment:
+      <<: *domain-env
+    depends_on:
+      - postgres
+      - mongodb
+
+  inventory:
+    build:
+      context: .
+      args:
+        DOMAIN: inventory
+    environment:
+      <<: *domain-env
+    depends_on:
+      - postgres
+      - mongodb
+
+  redis:
+    image: redis:8-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+
+  kong:
+    image: kong:3.9
+    user: root
+    depends_on:
+      - identity
+      - catalog
+      - cart
+      - orders
+      - inventory
+      - redis
+    environment:
+      KONG_DATABASE: "off"
+      KONG_PROXY_PORT: ${KONG_PROXY_PORT}
+      KONG_ADMIN_PORT: ${KONG_ADMIN_PORT}
+      KONG_RATE_LIMIT_PER_MINUTE: ${KONG_RATE_LIMIT_PER_MINUTE}
+      KONG_RATE_LIMIT_PER_HOUR: ${KONG_RATE_LIMIT_PER_HOUR}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      JWT_ISS: ${JWT_ISS}
+      AUTH_JWT_PUBLIC_KEY: ${AUTH_JWT_PUBLIC_KEY}
+    ports:
+      - "${KONG_PROXY_PORT}:8000"
+      - "${KONG_ADMIN_PORT}:8001"
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./kong:/kong
+      - ./docker/kong/entrypoint.sh:/entrypoint.sh
+    entrypoint: ["/entrypoint.sh"]
+
 volumes:
   postgres_data:
   mongodb_data:
+  redis_data:

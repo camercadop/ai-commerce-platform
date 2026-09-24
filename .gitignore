@@ -193,6 +193,10 @@ cython_debug/
 Thumbs.db
 Desktop.ini
 
+# Kong
+kong/kong.rendered.yml
+
+
 # Docker volumes (data persistence)
 postgres_data/
 redis_data/
@@ -217,3 +221,6 @@ tmp/
 .continue/*
 .ai-devrules/*
 .*_cache/
+
+# SSL/TLS certificates and private keys
+*.pem

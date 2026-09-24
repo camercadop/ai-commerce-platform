@@ -1,0 +1,138 @@
+_format_version: "3.0"
+
+services:
+  - name: identity-service
+    url: http://identity:8000
+    routes:
+      - name: identity-routes
+        paths:
+          - /api/v1/identity
+        plugins:
+          - name: jwt
+            config:
+              secret_is_base64: false
+              key_claim_name: iss
+              claims_to_verify:
+                - exp
+              run_on_preflight: false
+          - name: rate-limiting
+            config:
+              minute: ${KONG_RATE_LIMIT_PER_MINUTE}
+              hour: ${KONG_RATE_LIMIT_PER_HOUR}
+              policy: redis
+              redis:
+                host: redis
+                port: 6379
+                password: ${REDIS_PASSWORD}
+              fault_tolerant: false
+              hide_client_headers: false
+      - name: health-route
+        paths:
+          - /api/v1/health
+
+  - name: catalog-service
+    url: http://catalog:8000
+    routes:
+      - name: catalog-routes
+        paths:
+          - /api/v1/catalog
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: ${KONG_RATE_LIMIT_PER_MINUTE}
+              hour: ${KONG_RATE_LIMIT_PER_HOUR}
+              policy: redis
+              redis:
+                host: redis
+                port: 6379
+                password: ${REDIS_PASSWORD}
+              fault_tolerant: false
+              hide_client_headers: false
+
+  - name: cart-service
+    url: http://cart:8000
+    routes:
+      - name: cart-routes
+        paths:
+          - /api/v1/cart
+        plugins:
+          - name: jwt
+            config:
+              secret_is_base64: false
+              key_claim_name: iss
+              claims_to_verify:
+                - exp
+              run_on_preflight: false
+          - name: rate-limiting
+            config:
+              minute: ${KONG_RATE_LIMIT_PER_MINUTE}
+              hour: ${KONG_RATE_LIMIT_PER_HOUR}
+              policy: redis
+              redis:
+                host: redis
+                port: 6379
+                password: ${REDIS_PASSWORD}
+              fault_tolerant: false
+              hide_client_headers: false
+
+  - name: orders-service
+    url: http://orders:8000
+    routes:
+      - name: orders-routes
+        paths:
+          - /api/v1/orders
+        plugins:
+          - name: jwt
+            config:
+              secret_is_base64: false
+              key_claim_name: iss
+              claims_to_verify:
+                - exp
+              run_on_preflight: false
+          - name: rate-limiting
+            config:
+              minute: ${KONG_RATE_LIMIT_PER_MINUTE}
+              hour: ${KONG_RATE_LIMIT_PER_HOUR}
+              policy: redis
+              redis:
+                host: redis
+                port: 6379
+                password: ${REDIS_PASSWORD}
+              fault_tolerant: false
+              hide_client_headers: false
+
+  - name: inventory-service
+    url: http://inventory:8000
+    routes:
+      - name: inventory-routes
+        paths:
+          - /api/v1/inventory
+        plugins:
+          - name: jwt
+            config:
+              secret_is_base64: false
+              key_claim_name: iss
+              claims_to_verify:
+                - exp
+              run_on_preflight: false
+          - name: rate-limiting
+            config:
+              minute: ${KONG_RATE_LIMIT_PER_MINUTE}
+              hour: ${KONG_RATE_LIMIT_PER_HOUR}
+              policy: redis
+              redis:
+                host: redis
+                port: 6379
+                password: ${REDIS_PASSWORD}
+              fault_tolerant: false
+              hide_client_headers: false
+
+plugins:
+  - name: cors
+    config:
+      origins: []
+      methods: []
+      headers: []
+      exposed_headers: []
+      credentials: false
+      preflight_continue: false
