@@ -37,14 +37,12 @@ jobs:
         run: |
           openssl genrsa -out private.pem 2048
           openssl rsa -in private.pem -pubout -out public.pem
-          echo "public_key<<EOF" >> $GITHUB_OUTPUT
-          cat public.pem >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "AUTH_JWT_PUBLIC_KEY<<EOF" >> $GITHUB_ENV
+          cat public.pem >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
       - name: Start Kong
         run: docker compose up -d --quiet-pull kong
-        env:
-          AUTH_JWT_PUBLIC_KEY: ${{ steps.keys.outputs.public_key }}
 
       - name: Wait for Kong to be healthy
         run: |
