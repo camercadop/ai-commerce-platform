@@ -1,5 +1,13 @@
 _format_version: "3.0"
 
+consumers:
+  - username: platform
+    jwt_secrets:
+      - key: ${JWT_ISS}
+        algorithm: RS256
+        secret: dummy
+        rsa_public_key: ${AUTH_JWT_PUBLIC_KEY}
+
 routes:
   - name: health-route
     paths:
