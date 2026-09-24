@@ -11,6 +11,24 @@ on:
 jobs:
   kong:
     runs-on: ubuntu-latest
+    env:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+      DATABASE_BASE_URL: postgresql://postgres:postgres@postgres:5432
+      MONGO_USERNAME: mongo
+      MONGO_PASSWORD: mongo
+      MONGO_HOST: mongodb
+      MONGO_PORT: 27017
+      MONGO_DATABASE: audit_log
+      AUTH_JWT_ALGORITHM: RS256
+      AUTH_JWT_AUDIENCE: ""
+      REDIS_PASSWORD: redis
+      KONG_RATE_LIMIT_PER_MINUTE: 5
+      KONG_RATE_LIMIT_PER_HOUR: 1000
+      JWT_ISS: https://auth.example.com
+      KONG_ADMIN_PORT: 8001
+      KONG_PROXY_PORT: 8000
     steps:
       - uses: actions/checkout@v7
 
@@ -24,29 +42,14 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Start Kong
-        run: docker compose up -d kong
+        run: docker compose up -d --quiet-pull kong
         env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
-          DATABASE_BASE_URL: postgresql://postgres:postgres@postgres:5432
-          MONGO_USERNAME: mongo
-          MONGO_PASSWORD: mongo
-          MONGO_HOST: mongodb
-          MONGO_PORT: 27017
-          MONGO_DATABASE: audit_log
           AUTH_JWT_PUBLIC_KEY: ${{ steps.keys.outputs.public_key }}
-          AUTH_JWT_ALGORITHM: RS256
-          AUTH_JWT_AUDIENCE: ""
-          REDIS_PASSWORD: redis
-          KONG_RATE_LIMIT_PER_MINUTE: 5
-          KONG_RATE_LIMIT_PER_HOUR: 1000
-          JWT_ISS: https://auth.example.com
-          KONG_ADMIN_PORT: 8001
-          KONG_PROXY_PORT: 8000
 
       - name: Wait for Kong to be healthy
-        run: ./docker/kong/wait-healthy.sh
+        run: |
+          chmod +x ./docker/kong/wait-healthy.sh
+          ./docker/kong/wait-healthy.sh
 
       - name: Test protected route returns 401 without JWT
         run: |
