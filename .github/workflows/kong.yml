@@ -54,6 +54,13 @@ jobs:
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/api/v1/identity)
           [ "$STATUS" = "401" ] || (echo "Expected 401, got $STATUS" && exit 1)
 
+      - name: Test protected route with valid JWT is forwarded (not 401)
+        run: |
+          pip install -q "PyJWT[crypto]"
+          TOKEN=$(python3 -c "import jwt, time; key=open('private.pem').read(); print(jwt.encode({'iss': 'https://auth.example.com', 'exp': int(time.time()) + 300}, key, algorithm='RS256'))")
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/v1/identity)
+          [ "$STATUS" != "401" ] && [ "$STATUS" != "403" ] || (echo "Expected forwarded request, got $STATUS" && exit 1)
+
       - name: Test public route returns non-401 without JWT
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/api/v1/catalog)

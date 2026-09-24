@@ -1,5 +1,17 @@
 _format_version: "3.0"
 
+routes:
+  - name: health-route
+    paths:
+      - /api/v1/health
+    methods:
+      - GET
+    plugins:
+      - name: request-termination
+        config:
+          status_code: 200
+          message: OK
+
 services:
   - name: identity-service
     url: http://identity:8000
@@ -26,9 +38,6 @@ services:
                 password: ${REDIS_PASSWORD}
               fault_tolerant: false
               hide_client_headers: false
-      - name: health-route
-        paths:
-          - /api/v1/health
 
   - name: catalog-service
     url: http://catalog:8000
