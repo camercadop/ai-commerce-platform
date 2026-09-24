@@ -23,7 +23,10 @@ app/
 ├── shared/     # Platform infrastructure (auth, db, events, observability, storage, audit_log)
 ├── sys_audit/  # Audit log implementation
 ├── identity/   # Customer profiles and addresses
-└── catalog/    # Product catalog (categories, brands, products, variants)
+├── catalog/    # Product catalog (categories, brands, products, variants)
+├── cart/       # Shopping carts and line items
+├── orders/     # Checkout and order management
+└── inventory/  # Stock and reservations
 ```
 
 See [docs/architecture.md](docs/architecture.md) for the full system design and [docs/adr/](docs/adr/) for
@@ -35,6 +38,8 @@ architectural decisions.
 - **Database**: PostgreSQL (via Alembic migrations)
 - **Audit log**: MongoDB (via pymongo, abstract port)
 - **Auth**: OIDC-compliant provider (JWT validation, provider-agnostic)
+- **API Gateway**: Kong (db-less, declarative config, JWT + rate limiting + CORS)
+- **Cache / rate limiting**: Redis
 - **Observability**: OpenTelemetry, structured logging
 - **Storage**: MinIO / S3-compatible (abstract port)
 
@@ -43,9 +48,15 @@ architectural decisions.
 **Prerequisites**: Python 3.14, [uv](https://docs.astral.sh/uv/), Docker
 
 ```bash
-cp .env.example .env        # configure environment variables
-docker compose up -d postgres  # start database
-uv sync                     # install dependencies
+cp .env.example .env              # configure environment variables
+docker compose up -d postgres     # start database only
+uv sync                           # install dependencies
+```
+
+To start the full stack including Kong and all domain services:
+
+```bash
+docker compose up -d
 ```
 
 Run migrations for each domain (each owns its own Alembic config):

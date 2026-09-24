@@ -17,14 +17,18 @@ flowchart TB
     operator(["Operator\nManages catalog and monitors activity"])
 
     platform["AI Commerce Platform"]
+    kong["Kong\nAPI Gateway"]
 
     mongo["MongoDB\nAudit log"]
     postgres["PostgreSQL\nTransactional data"]
+    redis["Redis\nRate limit counters"]
 
-    shopper -- "HTTPS / REST" --> platform
-    operator -- "HTTPS / REST" --> platform
+    shopper -- "HTTPS / REST" --> kong
+    operator -- "HTTPS / REST" --> kong
+    kong -- "HTTP" --> platform
     platform -- "pymongo" --> mongo
     platform -- "SQLAlchemy" --> postgres
+    kong -- "TCP" --> redis
 ```
 
 ---
@@ -35,6 +39,8 @@ flowchart TB
 flowchart TB
     shopper(["Shopper"])
     operator(["Operator"])
+
+    kong["Kong\nAPI Gateway\nAuth · Rate limiting · CORS"]
 
     subgraph platform ["AI Commerce Platform"]
         identity["Identity\nCustomer profiles & addresses"]
@@ -47,13 +53,16 @@ flowchart TB
 
     postgres["PostgreSQL\nTransactional data"]
     mongo["MongoDB\nAudit documents"]
+    redis["Redis\nRate limit counters"]
 
-    shopper -- "HTTPS / REST" --> identity
-    shopper -- "HTTPS / REST" --> catalog
-    shopper -- "HTTPS / REST" --> cart
-    shopper -- "HTTPS / REST" --> orders
-    shopper -- "HTTPS / REST" --> inventory
-    operator -- "HTTPS / REST" --> catalog
+    shopper -- "HTTPS / REST" --> kong
+    operator -- "HTTPS / REST" --> kong
+    kong -- "JWT auth" --> identity
+    kong -- "public" --> catalog
+    kong -- "JWT auth" --> cart
+    kong -- "JWT auth" --> orders
+    kong -- "JWT auth" --> inventory
+    kong -- "TCP" --> redis
 
     cart -- "CatalogPort" --> catalog
     orders -- "CartPort (stub)" --> cart
@@ -178,8 +187,12 @@ ai-commerce-platform/
 │       ├── observability/
 │       └── storage/
 ├── docker/
+│   ├── kong/           # Kong entrypoint script
 │   └── postgres/       # Postgres init scripts
+├── kong/
+│   └── kong.yml        # Kong declarative config (db-less)
 ├── docs/
+├── Dockerfile          # Shared domain service image (DOMAIN build arg)
 ├── pyproject.toml
 └── uv.lock
 ```

@@ -38,22 +38,22 @@ DB_NAME=commerce_<domain>
 
 ## Running the Stack
 
-Start PostgreSQL only:
+Start infrastructure only:
 
 ```bash
-docker compose up -d postgres
+docker compose up -d postgres mongodb redis
 ```
 
-Start PostgreSQL and MongoDB (required for audit log):
+Start the full stack including Kong and all domain services:
 
 ```bash
-docker compose up -d postgres mongodb
+docker compose up -d
 ```
 
-Run a domain service locally:
+Run a domain service locally (outside Docker):
 
 ```bash
-uv run uvicorn app.<domain>.app:create_app --factory --reload
+uv run uvicorn app.<domain>.main:app --reload
 ```
 
 ---
