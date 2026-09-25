@@ -42,6 +42,22 @@ class MessageBroker(ABC):
             handler: Callable that receives a deserialized EventEnvelope.
         """
 
+    @abstractmethod
+    def start(self) -> None:
+        """Start the broker and begin any background consumer loops.
+
+        Called once at application startup after configuration is complete.
+        Implementations may start background threads or connections here.
+        """
+
+    @abstractmethod
+    def stop(self) -> None:
+        """Stop the broker and drain any background consumer loops.
+
+        Called once at application shutdown. Implementations should stop
+        accepting new work and wait for in-flight work to finish.
+        """
+
 
 class NoOpMessageBroker(MessageBroker):
     """No-op message broker that silently discards all published events.
@@ -64,4 +80,18 @@ class NoOpMessageBroker(MessageBroker):
         Args:
             topic: The broker topic (ignored).
             handler: The handler callable (ignored).
+        """
+
+    def start(self) -> None:
+        """No-op startup.
+
+        The no-op broker requires no background work, so this method is
+        intentionally empty.
+        """
+
+    def stop(self) -> None:
+        """No-op shutdown.
+
+        The no-op broker has no background work to drain, so this method
+        is intentionally empty.
         """

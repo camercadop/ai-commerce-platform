@@ -22,12 +22,14 @@ flowchart TB
     mongo["MongoDB\nAudit log"]
     postgres["PostgreSQL\nTransactional data"]
     redis["Redis\nRate limit counters"]
+    kafka["Kafka\nDomain events"]
 
     shopper -- "HTTPS / REST" --> kong
     operator -- "HTTPS / REST" --> kong
     kong -- "HTTP" --> platform
     platform -- "pymongo" --> mongo
     platform -- "SQLAlchemy" --> postgres
+    platform -- "confluent-kafka" --> kafka
     kong -- "TCP" --> redis
 ```
 
@@ -49,11 +51,13 @@ flowchart TB
         orders["Orders\nCheckout & order management"]
         inventory["Inventory\nStock & reservations"]
         sys_audit["sys_audit\nAudit log writer"]
+        sys_eventbus["sys_eventbus\nKafka event bus"]
     end
 
     postgres["PostgreSQL\nTransactional data"]
     mongo["MongoDB\nAudit documents"]
     redis["Redis\nRate limit counters"]
+    kafka["Kafka\nDomain events"]
 
     shopper -- "HTTPS / REST" --> kong
     operator -- "HTTPS / REST" --> kong
@@ -73,6 +77,12 @@ flowchart TB
     orders --> sys_audit
     inventory --> sys_audit
     sys_audit -- "pymongo" --> mongo
+
+    catalog --> sys_eventbus
+    cart --> sys_eventbus
+    orders --> sys_eventbus
+    inventory --> sys_eventbus
+    sys_eventbus -- "confluent-kafka" --> kafka
 
     identity -- "SQLAlchemy" --> postgres
     catalog -- "SQLAlchemy" --> postgres
@@ -141,6 +151,7 @@ flowchart LR
     subgraph infra ["Infrastructure"]
         direction TB
         sys_audit["sys_audit"] --> mongo["MongoDB"]
+        sys_eventbus["sys_eventbus"] --> kafka["Kafka"]
         postgres["PostgreSQL"]
     end
 
@@ -156,6 +167,11 @@ flowchart LR
     cart_audit --> sys_audit
     ord_audit --> sys_audit
     inv_audit --> sys_audit
+
+    cat_broker --> sys_eventbus
+    cart_broker --> sys_eventbus
+    ord_broker --> sys_eventbus
+    inv_broker --> sys_eventbus
 
     id_repo --> postgres
     cat_repo --> postgres
@@ -177,6 +193,7 @@ ai-commerce-platform/
 │   ├── orders/         # Checkout & order management
 │   ├── inventory/      # Stock & reservations
 │   ├── sys_audit/      # Audit log implementation
+│   ├── sys_eventbus/   # Kafka event bus implementation
 │   └── shared/
 │       ├── api/
 │       ├── audit_log/
@@ -243,6 +260,8 @@ Not every file is required for every domain.
 | `config/` | Pydantic Settings base class, startup validation (ADR-015) |
 | `db/` | SQLAlchemy engine, session factory, declarative base, mixins, generic repository |
 | `events/` | Event envelope model, abstract `MessageBroker` port, `NoOpMessageBroker` |
+
+`sys_audit/` and `sys_eventbus/` are concrete infrastructure modules that live outside `shared/` — they implement ports defined in `shared/` but carry provider-specific dependencies (`pymongo`, `confluent-kafka`). Domain code never imports from them directly; only composition roots (`app.py`) do.
 | `exceptions.py` | Shared base exception classes (`ResourceNotFound`, `ResourceAlreadyExists`) |
 | `observability/` | OpenTelemetry tracing setup, structured logging, `current_trace_id()` |
 | `storage/` | Abstract `ObjectStorage` port (ADR-004) |
@@ -260,14 +279,19 @@ Each domain's `routes.py` declares sentinel dependency functions (e.g. `_audit_d
 via `app.dependency_overrides`, pulling resolved singletons from the container:
 
 ```python
+from app.sys_audit import resolve_audit_repo
+from app.sys_eventbus import resolve_broker
+
+resolved_audit = audit_repo if audit_repo is not None else resolve_audit_repo()
+resolved_broker = broker if broker is not None else resolve_broker()
+
 container = CatalogContainer()
-container.audit.override(MongoAuditRepository(mongo_settings))
+container.audit.override(resolved_audit)
+container.broker.override(resolved_broker)
 app.dependency_overrides[_audit_dependency] = lambda: container.audit()
 ```
 
-This keeps routes free of infrastructure construction logic and makes the wiring
-explicit and testable — tests override the container with no-ops without touching
-route code.
+Factory functions (`resolve_audit_repo`, `resolve_broker`) read the environment and return the appropriate concrete implementation or a no-op fallback. This keeps routes free of infrastructure construction logic and makes the wiring explicit and testable — tests pass no-op implementations directly without touching route code.
 
 ---
 

@@ -4,9 +4,8 @@ consumers:
   - username: platform
     jwt_secrets:
       - key: ${JWT_ISS}
-        algorithm: RS256
-        secret: dummy
-        rsa_public_key: ${AUTH_JWT_PUBLIC_KEY}
+        algorithm: ${AUTH_JWT_ALGORITHM}
+        secret: ${AUTH_JWT_SECRET}
 
 routes:
   - name: health-route
@@ -27,6 +26,7 @@ services:
       - name: identity-routes
         paths:
           - /api/v1/identity
+        strip_path: false
         plugins:
           - name: jwt
             config:
@@ -53,6 +53,7 @@ services:
       - name: catalog-routes
         paths:
           - /api/v1/catalog
+        strip_path: false
         plugins:
           - name: rate-limiting
             config:
@@ -72,6 +73,7 @@ services:
       - name: cart-routes
         paths:
           - /api/v1/cart
+        strip_path: false
         plugins:
           - name: jwt
             config:
@@ -98,6 +100,7 @@ services:
       - name: orders-routes
         paths:
           - /api/v1/orders
+        strip_path: false
         plugins:
           - name: jwt
             config:
@@ -124,6 +127,7 @@ services:
       - name: inventory-routes
         paths:
           - /api/v1/inventory
+        strip_path: false
         plugins:
           - name: jwt
             config:

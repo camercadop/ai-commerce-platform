@@ -19,23 +19,23 @@ class InvalidTokenError(Exception):
 
 
 class JWTValidator:
-    """Validates JWTs against a configured public key and algorithm.
+    """Validates JWTs against a configured secret and algorithm.
 
-    Provider-agnostic — works with any OIDC-compliant token issuer.
+    Provider-agnostic — works with RS256 (PEM public key) or HS256 (shared secret).
 
     Args:
-        public_key: PEM-encoded RSA public key used to verify token signatures.
+        secret: PEM-encoded RSA public key for RS256, or shared secret string for HS256.
         algorithm: JWT signing algorithm. Defaults to RS256.
         audience: Expected audience claim. Pass None to skip audience validation.
     """
 
     def __init__(
         self,
-        public_key: str,
+        secret: str,
         algorithm: str = "RS256",
         audience: str | None = None,
     ) -> None:
-        self._public_key = public_key
+        self._secret = secret
         self._algorithm = algorithm
         self._audience = audience
 
@@ -56,7 +56,7 @@ class JWTValidator:
             options: jwt.types.Options = {"verify_aud": self._audience is not None}
             payload = jwt.decode(
                 token,
-                self._public_key,
+                self._secret,
                 algorithms=[self._algorithm],
                 audience=self._audience,
                 options=options,

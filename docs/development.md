@@ -41,7 +41,7 @@ DB_NAME=commerce_<domain>
 Start infrastructure only:
 
 ```bash
-docker compose up -d postgres mongodb redis
+docker compose up -d postgres mongodb redis kafka
 ```
 
 Start the full stack including Kong and all domain services:
@@ -61,8 +61,8 @@ uv run uvicorn app.<domain>.main:app --reload
 ## Audit Log
 
 The audit log uses MongoDB as its store. It is optional for local development —
-when `MongoSettings` are not provided, a `NoOpAuditRepository` is used and audit
-writes are silently skipped.
+when the `MONGO_*` environment variables are absent, `resolve_audit_repo()` falls
+back to `NoOpAuditRepository` and audit writes are silently skipped.
 
 To enable audit logging locally, start MongoDB and set the following in `.env`:
 
@@ -76,6 +76,31 @@ MONGO_DATABASE=audit_log
 
 Audit writes are best-effort — a failure logs a warning and never rolls back the
 domain transaction. See [docs/adr/](adr/) for the full design rationale.
+
+---
+
+## Event Bus
+
+Domain events are published through the `MessageBroker` port. The concrete
+implementation is Kafka (`app/sys_eventbus/`), wired at startup via `resolve_broker()`.
+
+Kafka is optional for local development — when `KAFKA_BOOTSTRAP_SERVERS` is absent,
+`resolve_broker()` falls back to `NoOpMessageBroker` and events are silently discarded.
+
+To enable Kafka locally, start the broker and set the following in `.env`:
+
+```bash
+KAFKA_BOOTSTRAP_SERVERS=localhost:9093
+```
+
+Verify events are being published:
+
+```bash
+docker compose exec kafka kafka-console-consumer.sh \
+    --bootstrap-server localhost:9092 \
+    --topic <domain>.<aggregate>.<event> \
+    --from-beginning
+```
 
 ---
 

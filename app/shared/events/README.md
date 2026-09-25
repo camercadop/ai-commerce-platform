@@ -8,8 +8,8 @@ never depend on a concrete broker directly (ADR-004).
 
 ```
 events/
-├── __init__.py     # Package entry point
-├── broker.py       # Message broker abstraction layer
+├── __init__.py     # Public exports for the message broker port
+├── broker.py       # Abstract message broker port and lifecycle contract
 └── envelope.py     # Platform event envelope contract
 ```
 
@@ -34,6 +34,19 @@ events/
 | `aggregate_id` | `str` | Identifier of the affected aggregate instance |
 | `trace_id` | `str` | OTel trace ID for end-to-end correlation |
 | `data` | `dict[str, Any]` | Event payload; shape is defined by `event_type` and `version` |
+
+## Lifecycle contract
+
+`MessageBroker` implementations may require startup and shutdown actions, such as
+opening connections or starting background consumer threads. The port exposes two
+lifecycle methods for this purpose:
+
+- `start()` — called once at application startup after configuration is complete.
+- `stop()` — called once at application shutdown to drain in-flight work.
+
+`NoOpMessageBroker` implements both methods as no-ops, so existing tests and local
+development flows continue to work without changes. Concrete implementations in
+`app/sys_eventbus/` provide the actual behavior.
 
 ## Consumer contract
 

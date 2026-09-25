@@ -1,4 +1,6 @@
 import logging
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
@@ -18,11 +20,12 @@ from app.catalog.routes import (
 from app.shared.api import (
     register_exception_handlers as register_shared_exception_handlers,
 )
-from app.shared.audit_log import MongoSettings, NoOpAuditRepository
+from app.shared.audit_log import AuditPort
 from app.shared.auth import AuthSettings, JWTValidator, build_auth_dependency
 from app.shared.db import DatabaseSettings, build_session_factory, make_get_db
-from app.shared.events import MessageBroker, NoOpMessageBroker
-from app.sys_audit import MongoAuditRepository
+from app.shared.events import MessageBroker
+from app.sys_audit import resolve_audit_repo
+from app.sys_eventbus import resolve_broker
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +34,7 @@ def create_app(
     db_settings: DatabaseSettings,
     auth_settings: AuthSettings,
     broker: MessageBroker | None = None,
-    mongo_settings: MongoSettings | None = None,
+    audit_repo: AuditPort | None = None,
 ) -> FastAPI:
     """Create and configure the catalog FastAPI application.
 
@@ -44,35 +47,37 @@ def create_app(
         db_settings: Database connection settings.
         auth_settings: JWT validation settings.
         broker: Message broker used to publish catalog domain events. When
-            None, a no-op broker is used — suitable for tests and local
-            development without a running broker.
-        mongo_settings: MongoDB connection settings for the audit log. When
-            None, a no-op audit repository is used — suitable for tests and
-            local development without MongoDB.
+            None, resolved automatically from the environment via
+            `resolve_broker()`.
+        audit_repo: AuditPort used to persist audit records. When None,
+            resolved automatically from the environment via
+            `resolve_audit_repo()`.
 
     Returns:
         A fully configured FastAPI application instance.
     """
-    app = FastAPI(title="Catalog Service")
-
     session_factory = build_session_factory(
         db_settings.database_base_url + "/commerce_catalog"
     )
     validator = JWTValidator(
-        public_key=auth_settings.auth_jwt_public_key,
+        secret=auth_settings.auth_jwt_secret,
         algorithm=auth_settings.auth_jwt_algorithm,
         audience=auth_settings.auth_jwt_audience,
     )
     get_current_user = build_auth_dependency(validator)
-    audit_repo = (
-        MongoAuditRepository(mongo_settings)
-        if mongo_settings
-        else NoOpAuditRepository()
-    )
-    resolved_broker = broker if broker is not None else NoOpMessageBroker()
+    resolved_audit = audit_repo if audit_repo is not None else resolve_audit_repo()
+    resolved_broker = broker if broker is not None else resolve_broker()
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
+        resolved_broker.start()
+        yield
+        resolved_broker.stop()
+
+    app = FastAPI(title="Catalog Service", lifespan=lifespan)
 
     container = CatalogContainer()
-    container.audit.override(audit_repo)
+    container.audit.override(resolved_audit)
     container.broker.override(resolved_broker)
     app.state.container = container
 
@@ -90,7 +95,7 @@ def create_app(
     app.include_router(variant_router)
     app.include_router(attribute_router)
 
-    @app.get("/health")
+    @app.get("/api/v1/catalog/health")
     def health() -> dict[str, str]:
         """Return service health status."""
         return {"status": "ok"}

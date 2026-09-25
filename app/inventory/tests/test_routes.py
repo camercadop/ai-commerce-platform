@@ -57,7 +57,7 @@ def make_reserve_stock_payload(**kwargs: object) -> dict[str, object]:
 
 
 def test_health_returns_ok(client: TestClient) -> None:
-    response = client.get("/health")
+    response = client.get("/api/v1/inventory/health")
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}

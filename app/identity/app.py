@@ -51,7 +51,7 @@ def create_app(
         db_settings.database_base_url + "/commerce_identity"
     )
     validator = JWTValidator(
-        public_key=auth_settings.auth_jwt_public_key,
+        secret=auth_settings.auth_jwt_secret,
         algorithm=auth_settings.auth_jwt_algorithm,
         audience=auth_settings.auth_jwt_audience,
     )
@@ -76,7 +76,7 @@ def create_app(
     app.include_router(customer_router)
     app.include_router(address_router)
 
-    @app.get("/health")
+    @app.get("/api/v1/identity/health")
     def health() -> dict[str, str]:
         """Return service health status."""
         return {"status": "ok"}
