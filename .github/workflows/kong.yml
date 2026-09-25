@@ -21,7 +21,8 @@ jobs:
       MONGO_HOST: mongodb
       MONGO_PORT: 27017
       MONGO_DATABASE: audit_log
-      AUTH_JWT_ALGORITHM: RS256
+      AUTH_JWT_ALGORITHM: HS256
+      AUTH_JWT_SECRET: ci-test-secret
       AUTH_JWT_AUDIENCE: ""
       REDIS_PASSWORD: redis
       KONG_RATE_LIMIT_PER_MINUTE: 5
@@ -31,15 +32,6 @@ jobs:
       KONG_PROXY_PORT: 8000
     steps:
       - uses: actions/checkout@v7
-
-      - name: Generate RSA key pair
-        id: keys
-        run: |
-          openssl genrsa -out private.pem 2048
-          openssl rsa -in private.pem -pubout -out public.pem
-          echo "AUTH_JWT_PUBLIC_KEY<<EOF" >> $GITHUB_ENV
-          cat public.pem >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
 
       - name: Start Kong
         run: docker compose up -d --quiet-pull kong
@@ -57,7 +49,7 @@ jobs:
       - name: Test protected route with valid JWT is forwarded (not 401)
         run: |
           pip install -q "PyJWT[crypto]"
-          TOKEN=$(python3 -c "import jwt, time; key=open('private.pem').read(); print(jwt.encode({'iss': 'https://auth.example.com', 'exp': int(time.time()) + 300}, key, algorithm='RS256'))")
+          TOKEN=$(python3 -c "import jwt, time; print(jwt.encode({'iss': 'https://auth.example.com', 'exp': int(time.time()) + 300}, 'ci-test-secret', algorithm='HS256'))")
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/v1/identity)
           [ "$STATUS" != "401" ] && [ "$STATUS" != "403" ] || (echo "Expected forwarded request, got $STATUS" && exit 1)
 
